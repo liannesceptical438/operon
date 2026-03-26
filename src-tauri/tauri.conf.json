@@ -1,0 +1,47 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicollassilva/tauri/main/crates/tauri-config-schema/schema.json",
+  "productName": "Operon",
+  "version": "0.3.2",
+  "identifier": "com.operon.app",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
+    "resources": [
+      "protocols/**/*"
+    ],
+    "targets": ["dmg", "app"],
+    "macOS": {
+      "entitlements": null,
+      "infoPlist": "Info.plist",
+      "minimumSystemVersion": "10.15"
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Operon",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "decorations": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:;"
+    }
+  }
+}

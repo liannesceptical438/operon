@@ -1,0 +1,115 @@
+export interface TextBlock {
+  type: 'text';
+  text: string;
+}
+
+export interface ThinkingBlock {
+  type: 'thinking';
+  thinking: string;
+}
+
+export interface ToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  result?: string;
+  status: 'pending' | 'running' | 'complete' | 'error';
+}
+
+export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock;
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: ContentBlock[];
+  timestamp: number;
+  isStreaming?: boolean;
+}
+
+export interface ClaudeStatus {
+  installed: boolean;
+  version: string | null;
+  path: string | null;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  method: string;
+}
+
+// NDJSON event types from Claude Code stream-json output
+export interface ClaudeSystemEvent {
+  type: 'system';
+  subtype?: string;
+  session_id?: string;
+  tools?: string[];
+  model?: string;
+}
+
+export interface ClaudeAssistantEvent {
+  type: 'assistant';
+  message: {
+    id?: string;
+    role: string;
+    content: Array<
+      | { type: 'text'; text: string }
+      | { type: 'thinking'; thinking: string }
+      | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+    >;
+  };
+  session_id?: string;
+}
+
+export interface ClaudeToolEvent {
+  type: 'tool';
+  tool_use_id: string;
+  content: string;
+}
+
+export interface ClaudeResultEvent {
+  type: 'result';
+  subtype?: string;
+  session_id?: string;
+  cost_usd?: number;
+  duration_ms?: number;
+  total_turns?: number;
+}
+
+export interface ClaudeErrorEvent {
+  type: 'error';
+  error: { message: string; type?: string };
+}
+
+export type ClaudeEvent =
+  | ClaudeSystemEvent
+  | ClaudeAssistantEvent
+  | ClaudeToolEvent
+  | ClaudeResultEvent
+  | ClaudeErrorEvent;
+
+// --- Session Management Types ---
+
+export interface SessionMetadata {
+  session_id: string;
+  claude_session_id: string | null;
+  project_path: string;
+  profile_id: string | null;
+  remote_path: string | null;
+  mode: string;
+  model: string | null;
+  created_at: number;
+  last_activity: number;
+  status: string; // "running" | "completed" | "failed"
+  use_terminal: boolean;
+  terminal_id: string | null;
+  name: string | null;
+}
+
+export interface SessionFileStatus {
+  session_id: string;
+  output_exists: boolean;
+  done_exists: boolean;
+  is_running: boolean;
+  is_completed: boolean;
+}

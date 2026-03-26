@@ -1,0 +1,27 @@
+[package]
+name = "operon"
+version = "0.3.2"
+edition = "2021"
+
+[lib]
+name = "operon_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+thiserror = "1"
+dirs = "5"
+portable-pty = "0.8"
+base64 = "0.22"
+ssh2 = "0.9"
+openssl-sys = { version = "0.9", features = ["vendored"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }

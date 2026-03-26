@@ -5,7 +5,7 @@
 **AI-powered IDE for bioinformatics — built by biologists, for biologists.**
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.2-purple.svg)](https://github.com/swaruplab/operon-/releases/tag/v0.3.2)
+[![Version](https://img.shields.io/badge/version-0.3.2-purple.svg)](https://github.com/swaruplab/operon/releases/tag/v0.3.2)
 [![macOS](https://img.shields.io/badge/macOS-12%2B-black.svg?logo=apple)](https://swaruplab.bio.uci.edu/operon)
 [![Tauri](https://img.shields.io/badge/Tauri_2-Rust_%2B_React-orange.svg)](https://tauri.app)
 [![Protocols](https://img.shields.io/badge/protocols-180%2B-green.svg)](#analysis-protocols)
@@ -19,7 +19,7 @@ with AI that understands your domain.
 
 [**Download**](https://swaruplab.bio.uci.edu/operon) •
 [**Documentation**](https://swaruplab.bio.uci.edu/operon) •
-[**GitHub Releases**](https://github.com/swaruplab/operon-/releases)
+[**GitHub Releases**](https://github.com/swaruplab/operon/releases)
 
 <img src="docs/img/main-workspace.png" alt="Operon workspace" width="800">
 
@@ -140,7 +140,7 @@ system's native webview — not Electron.
 **The latest signed & notarized DMGs are always available at:
 https://swaruplab.bio.uci.edu/operon**
 
-Past versions and release notes are on [GitHub Releases](https://github.com/swaruplab/operon-/releases).
+Past versions and release notes are on [GitHub Releases](https://github.com/swaruplab/operon/releases).
 
 | Platform | Download |
 |----------|----------|
@@ -181,8 +181,8 @@ For building from source, you need these installed manually:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/swaruplab/operon-.git
-cd operon-
+git clone https://github.com/swaruplab/operon.git
+cd operon
 
 # 2. Install frontend dependencies
 npm install
@@ -483,7 +483,7 @@ Three build script templates are provided:
 ## Project Architecture
 
 ```
-operon-/
+operon/
 ├── src/                    # React/TypeScript frontend
 │   ├── components/         # UI components (chat, editor, terminal, sidebar, etc.)
 │   │   ├── chat/           # AI chat panel with streaming, tool display
@@ -543,7 +543,7 @@ We welcome contributions from the bioinformatics community!
 |----------|------|
 | **In-app Help** | Click the Help icon in the activity bar |
 | **Documentation** | [swaruplab.bio.uci.edu/operon](https://swaruplab.bio.uci.edu/operon) |
-| **Bug Reports** | [GitHub Issues](https://github.com/swaruplab/operon-/issues) |
+| **Bug Reports** | [GitHub Issues](https://github.com/swaruplab/operon/issues) |
 | **Latest Downloads** | [swaruplab.bio.uci.edu/operon](https://swaruplab.bio.uci.edu/operon) |
 
 <p align="center">

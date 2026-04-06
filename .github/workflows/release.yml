@@ -15,7 +15,7 @@ jobs:
         include:
           - os: macos-latest
             rust-target: aarch64-apple-darwin
-          - os: macos-13
+          - os: macos-14
             rust-target: x86_64-apple-darwin
           - os: windows-latest
             rust-target: x86_64-pc-windows-msvc
@@ -48,12 +48,13 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Required for auto-updater — generate with: npx tauri signer generate -w ~/.tauri/operon.key
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # macOS code signing (optional)
           # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # Windows code signing (optional)
-          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Operon ${{ github.ref_name }}'
@@ -62,3 +63,5 @@ jobs:
           prerelease: false
           tauriScript: npx tauri
           args: --target ${{ matrix.rust-target }}
+          # This makes tauri-action generate latest.json for the updater
+          updaterJsonPreferNsis: true

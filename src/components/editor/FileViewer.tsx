@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   ZoomIn,
   ZoomOut,
@@ -17,6 +17,70 @@ interface FileViewerProps {
   base64Content: string;
   mimeType: string;
   binaryType: 'image' | 'pdf' | 'html';
+}
+
+// Separate PDF viewer that uses Blob URL instead of data: URI.
+// Tauri's WKWebView CSP blocks data: URIs in iframes (default-src 'self'),
+// but blob: URLs work because they're same-origin.
+function PdfViewer({ fileName, base64Content, onDownload }: {
+  fileName: string;
+  base64Content: string;
+  onDownload: (e: React.MouseEvent) => void;
+}) {
+  const blobUrl = useMemo(() => {
+    try {
+      const byteChars = atob(base64Content);
+      const byteArray = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteArray[i] = byteChars.charCodeAt(i);
+      }
+      const blob = new Blob([byteArray], { type: 'application/pdf' });
+      return URL.createObjectURL(blob);
+    } catch {
+      return null;
+    }
+  }, [base64Content]);
+
+  // Revoke blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [blobUrl]);
+
+  return (
+    <div className="flex flex-col h-full bg-zinc-950">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 shrink-0">
+        <div className="flex items-center gap-2 text-xs text-zinc-400">
+          <FileText className="w-4 h-4 text-red-400" />
+          <span className="font-medium">{fileName}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onDownload}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+            title="Download"
+          >
+            <Download className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        {blobUrl ? (
+          <iframe
+            src={blobUrl}
+            className="w-full h-full border-0"
+            title={fileName}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
+            Failed to load PDF preview
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function FileViewer({ filePath, base64Content, mimeType, binaryType }: FileViewerProps) {
@@ -118,34 +182,11 @@ export function FileViewer({ filePath, base64Content, mimeType, binaryType }: Fi
 
   if (binaryType === 'pdf') {
     return (
-      <div className="flex flex-col h-full bg-zinc-950">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 shrink-0">
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <FileText className="w-4 h-4 text-red-400" />
-            <span className="font-medium">{fileName}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={handleDownload}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
-              title="Download"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* PDF embed */}
-        <div className="flex-1 overflow-hidden">
-          <iframe
-            src={dataUri}
-            className="w-full h-full border-0"
-            title={fileName}
-          />
-        </div>
-      </div>
+      <PdfViewer
+        fileName={fileName}
+        base64Content={base64Content}
+        onDownload={handleDownload}
+      />
     );
   }
 

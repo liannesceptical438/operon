@@ -226,12 +226,19 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Listen for open-file events (e.g. from plan mode, file clicks)
+  // Supports both local ({ path }) and remote ({ path, profileId }) files.
   useEffect(() => {
-    const unlisten = listen<{ path: string }>('open-file', async (event) => {
-      const { path } = event.payload;
+    const unlisten = listen<{ path: string; profileId?: string }>('open-file', async (event) => {
+      const { path, profileId } = event.payload;
       try {
-        const content = await invoke<string>('read_file', { path });
-        openFile(path, content);
+        if (profileId) {
+          // Remote file — read via SSH
+          const content = await invoke<string>('read_remote_file', { profileId, path });
+          openFile(path, content, false, profileId);
+        } else {
+          const content = await invoke<string>('read_file', { path });
+          openFile(path, content);
+        }
       } catch {
         // File might not exist yet or be binary — skip
       }

@@ -21,6 +21,7 @@ interface ReportPhasePanelProps {
   onRescan: () => void;
   onCancel: () => void;
   onGenerate: () => void;
+  isStreaming: boolean;
   outputPath: string | null;
   error: string | null;
   isLoading: boolean;
@@ -116,7 +117,7 @@ function MethodsPreview({ methods }: { methods: MethodsInfo }) {
 
 export function ReportPhasePanel({
   phase, scan, selectedFiles, onSelectionChange,
-  methodsInfo, onProceed, onRescan, onCancel, onGenerate, outputPath, error, isLoading,
+  methodsInfo, onProceed, onRescan, onCancel, onGenerate, isStreaming, outputPath, error, isLoading,
   planHistory, currentPlanTitle,
 }: ReportPhasePanelProps) {
   const [reportScope, setReportScope] = useState<ReportScope>('comprehensive');
@@ -125,7 +126,7 @@ export function ReportPhasePanel({
   if (phase === 'idle') return null;
 
   return (
-    <div className="border border-purple-800/30 rounded-lg bg-purple-950/10 overflow-hidden">
+    <div className="border border-purple-800/30 rounded-lg bg-purple-950/10">
       {/* Phase indicator */}
       <PhaseIndicator currentPhase={phase} />
 
@@ -227,17 +228,25 @@ export function ReportPhasePanel({
         {/* Clarify phase — handled by chat messages + Generate button */}
         {phase === 'clarify' && (
           <div className="flex items-center gap-2 py-2">
-            <MessageCircle className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-[11px] text-zinc-400">
-              Provide context above, then click Generate or type <span className="text-purple-300 font-medium">"generate report"</span>.
-            </span>
-            <button
-              onClick={onGenerate}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-medium rounded-md transition-colors shrink-0"
-            >
-              <Printer className="w-3 h-3" />
-              Generate Report
-            </button>
+            <MessageCircle className="w-3.5 h-3.5 text-purple-400 pointer-events-none" />
+            {isStreaming ? (
+              <span className="text-[11px] text-zinc-400">
+                Claude is reviewing your context...
+              </span>
+            ) : (
+              <>
+                <span className="text-[11px] text-zinc-400">
+                  Provide context above, then click Generate or type <span className="text-purple-300 font-medium">"generate report"</span>.
+                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onGenerate(); }}
+                  className="relative z-10 ml-auto flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white text-xs font-medium rounded-md transition-colors shrink-0 cursor-pointer select-none"
+                >
+                  <Printer className="w-3.5 h-3.5 pointer-events-none" />
+                  Generate Report
+                </button>
+              </>
+            )}
           </div>
         )}
 

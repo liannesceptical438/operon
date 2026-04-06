@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [dev, main]
+    branches: [dev, main, cross-platform]
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, cross-platform]
 
 # Cancel in-progress runs for the same branch
 concurrency:
@@ -52,7 +52,7 @@ jobs:
             tauri-bundle: dmg
             label: macOS ARM
 
-          - os: macos-13
+          - os: macos-14
             rust-target: x86_64-apple-darwin
             tauri-bundle: dmg
             label: macOS Intel

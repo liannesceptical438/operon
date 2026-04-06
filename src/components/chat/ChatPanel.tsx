@@ -1771,21 +1771,25 @@ export function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Watchdog: detect stalled remote streams (no events for 90 seconds).
+  // Watchdog: detect stalled remote streams.
   // On remote SSH, the connection can drop silently (network hiccup, SSH timeout,
   // NFS stall) leaving the UI stuck in streaming mode with no way to recover.
+  // Agent mode gets a longer timeout (5 min) because tool calls like package
+  // installation or long Bash commands can legitimately produce no output for
+  // extended periods.  Other modes use 90 seconds.
   useEffect(() => {
     if (!isStreaming || !remoteInfo) {
       setStreamStalled(false);
       return;
     }
+    const stallThreshold = mode === 'agent' ? 300_000 : 90_000; // 5 min vs 90s
     const interval = setInterval(() => {
-      if (lastEventTime.current > 0 && Date.now() - lastEventTime.current > 90_000) {
+      if (lastEventTime.current > 0 && Date.now() - lastEventTime.current > stallThreshold) {
         setStreamStalled(true);
       }
     }, 10_000);
     return () => clearInterval(interval);
-  }, [isStreaming, remoteInfo]);
+  }, [isStreaming, remoteInfo, mode]);
 
   // Listen for Claude events
   useEffect(() => {
@@ -2654,7 +2658,8 @@ export function ChatPanel() {
       protocolPrefix = `<protocol name="${activeProtocol.name}">\n${protocolContent}\n</protocol>\n\nFollow the above protocol for this task. `;
     }
 
-    // Layer 2.5: Server configuration (auto-injected when connected to remote server)
+    // Layer 2.5: Server configuration + HPC execution guidelines
+    // Auto-injected when connected to a remote server.
     let serverConfigPrefix = '';
     if (remoteInfo?.profileId) {
       try {
@@ -2667,6 +2672,37 @@ export function ChatPanel() {
         }
       } catch {
         // Server config not available, continue without it
+      }
+
+      // Global HPC execution guidelines — injected for agent mode on remote servers.
+      // These prevent Claude from running long-blocking commands interactively.
+      if (mode === 'agent') {
+        serverConfigPrefix += `<hpc_execution_guidelines>
+You are running on an HPC cluster via an SSH connection. Follow these rules strictly:
+
+## Batch vs Interactive
+- **Interactive (run directly):** Quick commands under ~60 seconds — ls, cat, head, grep, wc, file checks, squeue, sacct, mv, cp, chmod, mkdir, echo, which, module list.
+- **Batch (submit via sbatch):** Anything expected to take more than 60 seconds — package installation (pip install, R install.packages, conda install), compilation, data processing, analysis pipelines, long-running scripts, file downloads (wget/curl for large files).
+
+## How to Submit Batch Jobs
+1. Write a SLURM batch script (.sh) with proper headers using the server_config values (partition, account, conda env).
+2. Submit with \`sbatch script.sh\` and capture the job ID.
+3. Poll completion with \`squeue -j JOBID\` or \`sacct -j JOBID --format=JobID,State,ExitCode -n\`.
+4. Once the job completes, check its output/error logs (slurm-JOBID.out) before proceeding.
+5. Do NOT use \`sleep\` loops to wait — use \`sacct\` polling instead.
+
+## Package Installation
+- NEVER run \`install.packages()\`, \`pip install\`, or \`conda install\` interactively. These can take 10-30 minutes and will block the session.
+- Instead, write a batch script that activates the environment and runs the installation, then submit it.
+- Check installation success by verifying the package can be imported after the job completes.
+
+## General Rules
+- Always check if a package/tool is already available before attempting installation (\`module avail\`, \`pip list\`, \`R -e "library(pkg)"\`).
+- Use the working directory on the shared filesystem for output — never write to /tmp (it is node-local on most HPC clusters).
+- When submitting jobs, use \`--output\` and \`--error\` flags to capture logs in the working directory.
+</hpc_execution_guidelines>
+
+`;
       }
     }
 
@@ -3521,14 +3557,16 @@ export function ChatPanel() {
             <span>Claude is thinking...</span>
           </div>
         )}
-        {/* Stalled stream warning — shown when no events received for 90s on remote */}
+        {/* Stalled stream warning — threshold is mode-dependent */}
         {isStreaming && streamStalled && (
           <div className="my-2 p-2.5 rounded-lg bg-amber-950/30 border border-amber-800/40 text-[12px]">
             <p className="text-amber-300 font-medium mb-1">
-              No response received for over 90 seconds
+              No response received for over {mode === 'agent' ? '5 minutes' : '90 seconds'}
             </p>
             <p className="text-amber-200/60 mb-2">
-              The remote SSH connection may have stalled. You can wait, or stop and retry.
+              {mode === 'agent'
+                ? 'A long-running command may still be executing on the compute node. You can wait, or stop and retry.'
+                : 'The remote SSH connection may have stalled. You can wait, or stop and retry.'}
             </p>
             <button
               onClick={() => {

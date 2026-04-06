@@ -1,5 +1,6 @@
 import { Hammer, Settings, Wifi, HelpCircle } from "lucide-react";
 import { isMac } from "../../lib/platform";
+import { UpdateChecker } from "./UpdateChecker";
 
 interface TopBarProps {
   onToggleSidebar: () => void;
@@ -33,8 +34,11 @@ export function TopBar({ onToggleSidebar, onToggleChat, onOpenSettings, onOpenHe
         </button>
       </div>
 
-      {/* Right: auth status + settings */}
+      {/* Right: update status + auth + settings */}
       <div className="flex items-center gap-2 px-3">
+        {/* Update checker */}
+        <UpdateChecker />
+
         {/* Connection status */}
         <div className="flex items-center gap-1.5 px-2 py-1 rounded text-xs">
           <div className="w-1.5 h-1.5 rounded-full bg-green-500" />

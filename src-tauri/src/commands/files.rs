@@ -1,5 +1,5 @@
-use serde::Serialize;
 use base64::Engine;
+use serde::Serialize;
 use tauri::Manager;
 
 #[derive(Serialize, Clone)]
@@ -12,7 +12,10 @@ pub struct FileEntry {
 }
 
 #[tauri::command]
-pub async fn list_directory(path: String, show_hidden: Option<bool>) -> Result<Vec<FileEntry>, String> {
+pub async fn list_directory(
+    path: String,
+    show_hidden: Option<bool>,
+) -> Result<Vec<FileEntry>, String> {
     let show_hidden = show_hidden.unwrap_or(false);
     let mut entries = Vec::new();
     let read_dir = std::fs::read_dir(&path).map_err(|e| e.to_string())?;
@@ -82,8 +85,7 @@ pub async fn save_clipboard_image(data: String, extension: String) -> Result<Str
         .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     let tmp_dir = crate::platform::temp_dir().join("operon-clipboard");
-    std::fs::create_dir_all(&tmp_dir)
-        .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -92,8 +94,7 @@ pub async fn save_clipboard_image(data: String, extension: String) -> Result<Str
     let filename = format!("clipboard-{}.{}", timestamp, extension);
     let path = tmp_dir.join(&filename);
 
-    std::fs::write(&path, &bytes)
-        .map_err(|e| format!("Failed to write clipboard image: {}", e))?;
+    std::fs::write(&path, &bytes).map_err(|e| format!("Failed to write clipboard image: {}", e))?;
 
     Ok(path.to_string_lossy().to_string())
 }
@@ -108,19 +109,21 @@ pub async fn save_attachment_file(data: String, filename: String) -> Result<Stri
         .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
     let tmp_dir = std::env::temp_dir().join("operon-attachments");
-    std::fs::create_dir_all(&tmp_dir)
-        .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
     // Preserve original filename but prefix with timestamp to avoid collisions
-    let safe_name = format!("{}-{}", timestamp, filename.replace('/', "_").replace('\\', "_"));
+    let safe_name = format!(
+        "{}-{}",
+        timestamp,
+        filename.replace('/', "_").replace('\\', "_")
+    );
     let path = tmp_dir.join(&safe_name);
 
-    std::fs::write(&path, &bytes)
-        .map_err(|e| format!("Failed to write attachment file: {}", e))?;
+    std::fs::write(&path, &bytes).map_err(|e| format!("Failed to write attachment file: {}", e))?;
 
     Ok(path.to_string_lossy().to_string())
 }
@@ -165,7 +168,7 @@ pub async fn rename_path(old_path: String, new_path: String) -> Result<(), Strin
 
 #[derive(Serialize, Clone)]
 pub struct IndexEntry {
-    pub path: String,       // relative path from project root
+    pub path: String, // relative path from project root
     pub size: u64,
     pub is_dir: bool,
     pub extension: Option<String>,
@@ -181,10 +184,23 @@ pub async fn index_project(root_path: String) -> Result<Vec<IndexEntry>, String>
     }
 
     let skip_dirs: std::collections::HashSet<&str> = [
-        ".git", "node_modules", "__pycache__", ".operon-run",
-        ".next", ".venv", "venv", ".tox", ".mypy_cache",
-        "target", "build", "dist", ".cache", ".eggs",
-    ].into_iter().collect();
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".operon-run",
+        ".next",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        "target",
+        "build",
+        "dist",
+        ".cache",
+        ".eggs",
+    ]
+    .into_iter()
+    .collect();
 
     let mut entries = Vec::new();
     index_walk(root, root, 0, 4, &skip_dirs, &mut entries);
@@ -202,7 +218,9 @@ fn index_walk(
     skip_dirs: &std::collections::HashSet<&str>,
     entries: &mut Vec<IndexEntry>,
 ) {
-    if depth > max_depth { return; }
+    if depth > max_depth {
+        return;
+    }
     let read_dir = match std::fs::read_dir(dir) {
         Ok(rd) => rd,
         Err(_) => return,
@@ -216,19 +234,24 @@ fn index_walk(
         let name = entry.file_name().to_string_lossy().to_string();
 
         // Skip hidden files/dirs (platform-aware)
-        if crate::platform::is_hidden(&path) { continue; }
+        if crate::platform::is_hidden(&path) {
+            continue;
+        }
 
         let metadata = match std::fs::metadata(&path) {
             Ok(m) => m,
             Err(_) => continue,
         };
 
-        let rel_path = path.strip_prefix(base)
+        let rel_path = path
+            .strip_prefix(base)
             .map(|r| r.to_string_lossy().to_string())
             .unwrap_or_else(|_| name.clone());
 
         if metadata.is_dir() {
-            if skip_dirs.contains(name.as_str()) { continue; }
+            if skip_dirs.contains(name.as_str()) {
+                continue;
+            }
 
             // Count children to show summary for large dirs
             let child_count = std::fs::read_dir(&path).map(|rd| rd.count()).unwrap_or(0);
@@ -245,7 +268,8 @@ fn index_walk(
                 index_walk(base, &path, depth + 1, max_depth, skip_dirs, entries);
             }
         } else {
-            let ext = path.extension()
+            let ext = path
+                .extension()
                 .and_then(|e| e.to_str())
                 .map(|e| e.to_lowercase());
 
@@ -258,7 +282,9 @@ fn index_walk(
         }
 
         // Hard cap to prevent runaway indexing
-        if entries.len() >= 300 { return; }
+        if entries.len() >= 300 {
+            return;
+        }
     }
 }
 
@@ -271,7 +297,10 @@ pub async fn index_remote_project(
 ) -> Result<Vec<IndexEntry>, String> {
     let profile = {
         let profiles = ssh_state.profiles.lock().map_err(|e| e.to_string())?;
-        profiles.iter().find(|p| p.id == profile_id).cloned()
+        profiles
+            .iter()
+            .find(|p| p.id == profile_id)
+            .cloned()
             .ok_or_else(|| format!("SSH profile {} not found", profile_id))?
     };
 
@@ -289,22 +318,35 @@ pub async fn index_remote_project(
 
     for line in output.lines() {
         let parts: Vec<&str> = line.splitn(3, '\t').collect();
-        if parts.len() < 3 { continue; }
+        if parts.len() < 3 {
+            continue;
+        }
         let size: u64 = parts[0].parse().unwrap_or(0);
         let ftype = parts[1];
         let rel_path = parts[2].to_string();
-        if rel_path.is_empty() { continue; }
+        if rel_path.is_empty() {
+            continue;
+        }
 
         let is_dir = ftype == "d";
         let extension = if !is_dir {
-            rel_path.rsplit('.').next()
-                .and_then(|e| if e != rel_path { Some(e.to_lowercase()) } else { None })
+            rel_path.rsplit('.').next().and_then(|e| {
+                if e != rel_path {
+                    Some(e.to_lowercase())
+                } else {
+                    None
+                }
+            })
         } else {
             None
         };
 
         entries.push(IndexEntry {
-            path: if is_dir { format!("{}/", rel_path) } else { rel_path },
+            path: if is_dir {
+                format!("{}/", rel_path)
+            } else {
+                rel_path
+            },
             size,
             is_dir,
             extension,
@@ -338,14 +380,14 @@ pub async fn index_remote_project(
 
 #[derive(Serialize, Clone)]
 pub struct ProtocolEntry {
-    pub id: String,           // folder name or filename without .md
-    pub name: String,         // display name (from H1 header or derived from id)
-    pub description: String,  // first non-header line from entry point
-    pub path: String,         // full path to entry point .md file
-    pub is_folder: bool,      // true if folder-based, false if single .md file
-    pub file_count: usize,    // number of files in the protocol (1 for single .md)
-    pub source: String,       // "bundled" or "user"
-    pub category: String,     // auto-detected category for grouping
+    pub id: String,          // folder name or filename without .md
+    pub name: String,        // display name (from H1 header or derived from id)
+    pub description: String, // first non-header line from entry point
+    pub path: String,        // full path to entry point .md file
+    pub is_folder: bool,     // true if folder-based, false if single .md file
+    pub file_count: usize,   // number of files in the protocol (1 for single .md)
+    pub source: String,      // "bundled" or "user"
+    pub category: String,    // auto-detected category for grouping
 }
 
 /// Auto-detect a protocol category from its id and content.
@@ -355,117 +397,214 @@ fn detect_category(id: &str, _content: &str) -> String {
     let id = id.to_lowercase();
 
     // --- Databases & References (match first — very explicit naming) ---
-    if id.ends_with("-database") || id.contains("database")
-        || id == "openalex-database" || id == "depmap"
+    if id.ends_with("-database")
+        || id.contains("database")
+        || id == "openalex-database"
+        || id == "depmap"
     {
         return "database".to_string();
     }
 
     // --- Writing, Documents & Publishing ---
-    if id.contains("writing") || id.contains("docx") || id.contains("pptx")
-        || id.contains("xlsx") || id.contains("pdf") || id.contains("latex")
-        || id.contains("poster") || id.contains("slide") || id.contains("paper-2-web")
-        || id.contains("literature-review") || id.contains("peer-review")
-        || id.contains("citation") || id.contains("infographic") || id.contains("venue-template")
-        || id.contains("markdown") || id.contains("report") || id.contains("research-grant")
-        || id.contains("scientific-writing") || id.contains("scientific-slide")
-        || id.contains("scientific-schemat") || id.contains("open-notebook")
-        || id.contains("clinical-report") || id.contains("markitdown")
+    if id.contains("writing")
+        || id.contains("docx")
+        || id.contains("pptx")
+        || id.contains("xlsx")
+        || id.contains("pdf")
+        || id.contains("latex")
+        || id.contains("poster")
+        || id.contains("slide")
+        || id.contains("paper-2-web")
+        || id.contains("literature-review")
+        || id.contains("peer-review")
+        || id.contains("citation")
+        || id.contains("infographic")
+        || id.contains("venue-template")
+        || id.contains("markdown")
+        || id.contains("report")
+        || id.contains("research-grant")
+        || id.contains("scientific-writing")
+        || id.contains("scientific-slide")
+        || id.contains("scientific-schemat")
+        || id.contains("open-notebook")
+        || id.contains("clinical-report")
+        || id.contains("markitdown")
     {
         return "writing".to_string();
     }
 
     // --- Visualization & Plotting ---
-    if id.contains("volcano") || id.contains("plot") || id.contains("heatmap")
-        || id.contains("visualization") || id.contains("matplotlib")
-        || id.contains("seaborn") || id.contains("plotly")
-        || id.contains("generate-image") || id.contains("umap-learn")
+    if id.contains("volcano")
+        || id.contains("plot")
+        || id.contains("heatmap")
+        || id.contains("visualization")
+        || id.contains("matplotlib")
+        || id.contains("seaborn")
+        || id.contains("plotly")
+        || id.contains("generate-image")
+        || id.contains("umap-learn")
     {
         return "visualization".to_string();
     }
 
     // --- Lab Integrations & Platforms ---
-    if id.contains("integration") || id.contains("latchbio") || id.contains("benchling")
-        || id.contains("dnanexus") || id.contains("omero") || id.contains("opentrons")
-        || id.contains("ginkgo") || id.contains("labarchive") || id.contains("protocolsio")
-        || id.contains("pylabrobot") || id.contains("rowan") || id.contains("modal")
-        || id.contains("denario") || id.contains("adaptyv")
+    if id.contains("integration")
+        || id.contains("latchbio")
+        || id.contains("benchling")
+        || id.contains("dnanexus")
+        || id.contains("omero")
+        || id.contains("opentrons")
+        || id.contains("ginkgo")
+        || id.contains("labarchive")
+        || id.contains("protocolsio")
+        || id.contains("pylabrobot")
+        || id.contains("rowan")
+        || id.contains("modal")
+        || id.contains("denario")
+        || id.contains("adaptyv")
     {
         return "integration".to_string();
     }
 
     // --- Genomics & Omics Analysis Pipelines ---
-    if id.contains("pipeline") || id.contains("seq-analysis") || id.contains("rnaseq")
-        || id.contains("atacseq") || id.contains("spatial-transcriptomics")
-        || id.contains("scrna") || id.contains("bulk-rna") || id.contains("scvelo")
-        || id.contains("gwas") || id.contains("phylogenetic") || id.contains("neuropixel")
-        || id.contains("metabolomics") || id.contains("glycoengineering")
-        || id.contains("molecular-dynamics") || id.contains("scanpy") || id.contains("anndata")
-        || id.contains("pydeseq") || id.contains("pysam") || id.contains("scvi")
-        || id.contains("cellxgene") || id.contains("lamindb") || id.contains("scikit-bio")
-        || id.contains("deeptools") || id.contains("flowio") || id.contains("pathml")
-        || id.contains("histolab") || id.contains("tiledbvcf") || id.contains("gtars")
-        || id.contains("geniml") || id.contains("polars-bio") || id.contains("etetoolkit")
-        || id.contains("biopython") || id.contains("bioservices") || id.contains("gget")
-        || id.contains("pyopenms") || id.contains("matchms") || id.contains("arboreto")
-        || id.contains("neurokit") || id.contains("pydicom") || id.contains("imaging-data")
+    if id.contains("pipeline")
+        || id.contains("seq-analysis")
+        || id.contains("rnaseq")
+        || id.contains("atacseq")
+        || id.contains("spatial-transcriptomics")
+        || id.contains("scrna")
+        || id.contains("bulk-rna")
+        || id.contains("scvelo")
+        || id.contains("gwas")
+        || id.contains("phylogenetic")
+        || id.contains("neuropixel")
+        || id.contains("metabolomics")
+        || id.contains("glycoengineering")
+        || id.contains("molecular-dynamics")
+        || id.contains("scanpy")
+        || id.contains("anndata")
+        || id.contains("pydeseq")
+        || id.contains("pysam")
+        || id.contains("scvi")
+        || id.contains("cellxgene")
+        || id.contains("lamindb")
+        || id.contains("scikit-bio")
+        || id.contains("deeptools")
+        || id.contains("flowio")
+        || id.contains("pathml")
+        || id.contains("histolab")
+        || id.contains("tiledbvcf")
+        || id.contains("gtars")
+        || id.contains("geniml")
+        || id.contains("polars-bio")
+        || id.contains("etetoolkit")
+        || id.contains("biopython")
+        || id.contains("bioservices")
+        || id.contains("gget")
+        || id.contains("pyopenms")
+        || id.contains("matchms")
+        || id.contains("arboreto")
+        || id.contains("neurokit")
+        || id.contains("pydicom")
+        || id.contains("imaging-data")
         || id.contains("get-available-resources")
     {
         return "genomics".to_string();
     }
 
     // --- Cheminformatics & Drug Discovery ---
-    if id.contains("rdkit") || id.contains("deepchem") || id.contains("diffdock")
-        || id.contains("datamol") || id.contains("molfeat") || id.contains("medchem")
-        || id.contains("torchdrug") || id.contains("esm") || id.contains("alphafold")
-        || id.contains("dhdna") || id.contains("pytdc") || id.contains("primekg")
-        || id.contains("cobrapy") || id.contains("pymatgen")
+    if id.contains("rdkit")
+        || id.contains("deepchem")
+        || id.contains("diffdock")
+        || id.contains("datamol")
+        || id.contains("molfeat")
+        || id.contains("medchem")
+        || id.contains("torchdrug")
+        || id.contains("esm")
+        || id.contains("alphafold")
+        || id.contains("dhdna")
+        || id.contains("pytdc")
+        || id.contains("primekg")
+        || id.contains("cobrapy")
+        || id.contains("pymatgen")
     {
         return "cheminformatics".to_string();
     }
 
     // --- ML, AI & Quantum Computing ---
-    if id.contains("transformers") || id.contains("pytorch") || id.contains("torch-geometric")
-        || id.contains("scikit-learn") || id.contains("stable-baselines")
-        || id.contains("pennylane") || id.contains("qiskit") || id.contains("qutip")
-        || id.contains("cirq") || id.contains("shap") || id.contains("pufferlib")
-        || id.contains("hypogenic") || id.contains("timesfm") || id.contains("aeon")
-        || id.contains("pymc") || id.contains("scikit-survival")
+    if id.contains("transformers")
+        || id.contains("pytorch")
+        || id.contains("torch-geometric")
+        || id.contains("scikit-learn")
+        || id.contains("stable-baselines")
+        || id.contains("pennylane")
+        || id.contains("qiskit")
+        || id.contains("qutip")
+        || id.contains("cirq")
+        || id.contains("shap")
+        || id.contains("pufferlib")
+        || id.contains("hypogenic")
+        || id.contains("timesfm")
+        || id.contains("aeon")
+        || id.contains("pymc")
+        || id.contains("scikit-survival")
     {
         return "ml_ai".to_string();
     }
 
     // --- Statistics & Data Science ---
-    if id.contains("statsmodels") || id.contains("statistical") || id.contains("polars")
-        || id.contains("dask") || id.contains("vaex") || id.contains("zarr")
-        || id.contains("sympy") || id.contains("simpy") || id.contains("pymoo")
-        || id.contains("networkx") || id.contains("exploratory-data")
-        || id.contains("matlab") || id.contains("geopandas")
-        || id.contains("fluidsim") || id.contains("astropy") || id.contains("geomaster")
+    if id.contains("statsmodels")
+        || id.contains("statistical")
+        || id.contains("polars")
+        || id.contains("dask")
+        || id.contains("vaex")
+        || id.contains("zarr")
+        || id.contains("sympy")
+        || id.contains("simpy")
+        || id.contains("pymoo")
+        || id.contains("networkx")
+        || id.contains("exploratory-data")
+        || id.contains("matlab")
+        || id.contains("geopandas")
+        || id.contains("fluidsim")
+        || id.contains("astropy")
+        || id.contains("geomaster")
     {
         return "statistics".to_string();
     }
 
     // --- Research & Reasoning ---
-    if id.contains("hypothesis") || id.contains("brainstorming") || id.contains("critical-thinking")
-        || id.contains("scholar-evaluation") || id.contains("consciousness")
-        || id.contains("what-if") || id.contains("research-lookup")
-        || id.contains("bgpt-paper") || id.contains("perplexity-search")
-        || id.contains("parallel-web") || id.contains("pyzotero")
+    if id.contains("hypothesis")
+        || id.contains("brainstorming")
+        || id.contains("critical-thinking")
+        || id.contains("scholar-evaluation")
+        || id.contains("consciousness")
+        || id.contains("what-if")
+        || id.contains("research-lookup")
+        || id.contains("bgpt-paper")
+        || id.contains("perplexity-search")
+        || id.contains("parallel-web")
+        || id.contains("pyzotero")
     {
         return "research".to_string();
     }
 
     // --- Clinical & Healthcare ---
-    if id.contains("clinical") || id.contains("treatment") || id.contains("pyhealth")
+    if id.contains("clinical")
+        || id.contains("treatment")
+        || id.contains("pyhealth")
         || id.contains("iso-13485")
     {
         return "clinical".to_string();
     }
 
     // --- Finance & Business ---
-    if id.contains("alpha-vantage") || id.contains("hedgefund") || id.contains("edgartools")
-        || id.contains("fred-economic") || id.contains("usfiscaldata") || id.contains("market-research")
+    if id.contains("alpha-vantage")
+        || id.contains("hedgefund")
+        || id.contains("edgartools")
+        || id.contains("fred-economic")
+        || id.contains("usfiscaldata")
+        || id.contains("market-research")
         || id.contains("datacommons")
     {
         return "finance".to_string();
@@ -480,7 +619,8 @@ fn detect_category(id: &str, _content: &str) -> String {
 fn protocols_dir() -> Result<std::path::PathBuf, String> {
     let dir = crate::platform::data_dir().join("protocols");
     if !dir.exists() {
-        std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create protocols dir: {}", e))?;
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("Failed to create protocols dir: {}", e))?;
     }
     Ok(dir)
 }
@@ -509,7 +649,14 @@ fn extract_description(content: &str) -> String {
         let clean = trimmed.trim_start_matches(['*', '_', '-', '>', ' ']);
         if !clean.is_empty() {
             let desc = if clean.len() > 120 {
-                format!("{}...", &clean[..clean.char_indices().nth(120).map(|(i,_)|i).unwrap_or(clean.len())])
+                format!(
+                    "{}...",
+                    &clean[..clean
+                        .char_indices()
+                        .nth(120)
+                        .map(|(i, _)| i)
+                        .unwrap_or(clean.len())]
+                )
             } else {
                 clean.to_string()
             };
@@ -555,7 +702,12 @@ fn list_files_recursive(base: &std::path::Path, dir: &std::path::Path) -> Vec<St
 }
 
 /// Scan a directory for protocols (both folder-based and single-file).
-fn scan_protocols_in_dir(dir: &std::path::Path, protocols: &mut Vec<ProtocolEntry>, seen_ids: &mut std::collections::HashSet<String>, source: &str) {
+fn scan_protocols_in_dir(
+    dir: &std::path::Path,
+    protocols: &mut Vec<ProtocolEntry>,
+    seen_ids: &mut std::collections::HashSet<String>,
+    source: &str,
+) {
     let read_dir = match std::fs::read_dir(dir) {
         Ok(rd) => rd,
         Err(_) => return,
@@ -581,7 +733,8 @@ fn scan_protocols_in_dir(dir: &std::path::Path, protocols: &mut Vec<ProtocolEntr
             seen_ids.insert(id.clone());
 
             let content = std::fs::read_to_string(&entry_point).unwrap_or_default();
-            let display_name = content.lines()
+            let display_name = content
+                .lines()
                 .find(|l| l.starts_with("# "))
                 .map(|l| l.trim_start_matches("# ").trim().to_string())
                 .unwrap_or_else(|| id_to_display_name(&id));
@@ -601,14 +754,18 @@ fn scan_protocols_in_dir(dir: &std::path::Path, protocols: &mut Vec<ProtocolEntr
             });
         } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
             // Single-file protocol
-            let id = name_str.strip_suffix(".md").unwrap_or(&name_str).to_string();
+            let id = name_str
+                .strip_suffix(".md")
+                .unwrap_or(&name_str)
+                .to_string();
             if seen_ids.contains(&id) {
                 continue;
             }
             seen_ids.insert(id.clone());
 
             let content = std::fs::read_to_string(&path).unwrap_or_default();
-            let display_name = content.lines()
+            let display_name = content
+                .lines()
                 .find(|l| l.starts_with("# "))
                 .map(|l| l.trim_start_matches("# ").trim().to_string())
                 .unwrap_or_else(|| id_to_display_name(&id));
@@ -649,7 +806,8 @@ pub async fn list_protocols(app_handle: tauri::AppHandle) -> Result<Vec<Protocol
     // 3. Fallback: look relative to executable for macOS bundle and dev mode
     if let Ok(exe_path) = std::env::current_exe() {
         // macOS bundle: Operon.app/Contents/MacOS/operon → ../../Resources/protocols
-        if let Some(resources) = exe_path.parent()
+        if let Some(resources) = exe_path
+            .parent()
             .and_then(|p| p.parent())
             .map(|p| p.join("Resources").join("protocols"))
         {
@@ -693,7 +851,10 @@ pub async fn list_protocols(app_handle: tauri::AppHandle) -> Result<Vec<Protocol
 /// - Contents of all .md files in references/
 /// For single-file protocols, just returns the file content.
 #[tauri::command]
-pub async fn read_protocol(app_handle: tauri::AppHandle, protocol_id: String) -> Result<String, String> {
+pub async fn read_protocol(
+    app_handle: tauri::AppHandle,
+    protocol_id: String,
+) -> Result<String, String> {
     let user_dir = protocols_dir()?;
 
     // Helper: check if a dir has PROTOCOL.md or SKILL.md
@@ -734,7 +895,8 @@ pub async fn read_protocol(app_handle: tauri::AppHandle, protocol_id: String) ->
 
         if let Ok(exe_path) = std::env::current_exe() {
             // macOS bundle fallback: Resources/protocols
-            if let Some(resources) = exe_path.parent()
+            if let Some(resources) = exe_path
+                .parent()
                 .and_then(|p| p.parent())
                 .map(|p| p.join("Resources").join("protocols"))
             {
@@ -783,7 +945,8 @@ pub async fn read_protocol(app_handle: tauri::AppHandle, protocol_id: String) ->
             .map_err(|e| format!("Failed to read protocol entry point: {}", e))?;
 
         let all_files = list_files_recursive(&folder, &folder);
-        let manifest = all_files.iter()
+        let manifest = all_files
+            .iter()
             .map(|f| format!("  {}", f))
             .collect::<Vec<_>>()
             .join("\n");
@@ -801,7 +964,8 @@ pub async fn read_protocol(app_handle: tauri::AppHandle, protocol_id: String) ->
                     let p = entry.path();
                     if p.extension().and_then(|e| e.to_str()) == Some("md") {
                         if let Ok(content) = std::fs::read_to_string(&p) {
-                            let rel_name = p.strip_prefix(&folder)
+                            let rel_name = p
+                                .strip_prefix(&folder)
                                 .map(|r| r.to_string_lossy().to_string())
                                 .unwrap_or_default();
                             full_context.push_str(&format!(
@@ -834,15 +998,20 @@ pub async fn save_protocol(protocol_id: String, content: String) -> Result<(), S
     // Sanitize ID: only allow alphanumeric, hyphens, underscores
     let sanitized: String = protocol_id
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     if sanitized.is_empty() {
         return Err("Protocol ID cannot be empty".into());
     }
 
     let file_path = dir.join(format!("{}.md", sanitized));
-    std::fs::write(&file_path, content)
-        .map_err(|e| format!("Failed to save protocol: {}", e))
+    std::fs::write(&file_path, content).map_err(|e| format!("Failed to save protocol: {}", e))
 }
 
 /// Delete a user-created protocol (single .md or folder) from ~/.operon/protocols/.
@@ -864,7 +1033,10 @@ pub async fn delete_protocol(protocol_id: String) -> Result<(), String> {
             .map_err(|e| format!("Failed to delete protocol folder: {}", e));
     }
 
-    Err(format!("Protocol '{}' not found in user protocols", protocol_id))
+    Err(format!(
+        "Protocol '{}' not found in user protocols",
+        protocol_id
+    ))
 }
 
 /// Generate a protocol using Claude Code in one-shot mode.

@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::Emitter;
-use std::process::{Child, Command, Stdio};
 
 // ── Data Structures ──────────────────────────────────────────────────────
 
@@ -492,10 +492,7 @@ pub async fn get_extension_manifest(
 }
 
 #[tauri::command]
-pub async fn get_extension_readme(
-    namespace: String,
-    name: String,
-) -> Result<String, String> {
+pub async fn get_extension_readme(namespace: String, name: String) -> Result<String, String> {
     let client = reqwest::Client::new();
     let detail_resp = client
         .get(format!("{OPEN_VSX_BASE}/{namespace}/{name}"))
@@ -546,10 +543,7 @@ pub async fn get_namespace_extensions(namespace: String) -> Result<NamespaceDeta
 }
 
 #[tauri::command]
-pub async fn get_extension_reviews(
-    namespace: String,
-    name: String,
-) -> Result<Vec<Review>, String> {
+pub async fn get_extension_reviews(namespace: String, name: String) -> Result<Vec<Review>, String> {
     let client = reqwest::Client::new();
     let resp = client
         .get(format!("{OPEN_VSX_BASE}/{namespace}/{name}/reviews"))
@@ -581,15 +575,7 @@ pub async fn browse_extensions_by_category(
     size: Option<u32>,
     sort_by: Option<String>,
 ) -> Result<SearchResult, String> {
-    search_extensions(
-        String::new(),
-        Some(category),
-        offset,
-        size,
-        sort_by,
-        None,
-    )
-    .await
+    search_extensions(String::new(), Some(category), offset, size, sort_by, None).await
 }
 
 // ── Tauri Commands: Extension Management ─────────────────────────────────
@@ -676,11 +662,7 @@ pub async fn install_extension_from_registry(
         .and_then(|f| f.download.as_ref())
         .ok_or("No download URL available")?
         .clone();
-    let icon_url = detail
-        .files
-        .as_ref()
-        .and_then(|f| f.icon.as_ref())
-        .cloned();
+    let icon_url = detail.files.as_ref().and_then(|f| f.icon.as_ref()).cloned();
 
     // Emit: downloading
     let _ = app_handle.emit(
@@ -808,9 +790,7 @@ pub async fn install_extension_from_registry(
     // 6. Create InstalledExtension
     let installed = InstalledExtension {
         id: ext_id.clone(),
-        display_name: detail
-            .display_name
-            .unwrap_or_else(|| name.clone()),
+        display_name: detail.display_name.unwrap_or_else(|| name.clone()),
         version: detail.version.clone(),
         description: detail.description.unwrap_or_default(),
         enabled: true,
@@ -872,8 +852,7 @@ pub async fn sideload_vsix(
     }
 
     // Read VSIX file
-    let vsix_data =
-        std::fs::read(&vsix_path).map_err(|e| format!("Failed to read VSIX: {}", e))?;
+    let vsix_data = std::fs::read(&vsix_path).map_err(|e| format!("Failed to read VSIX: {}", e))?;
     let cursor = std::io::Cursor::new(vsix_data);
     let mut archive =
         zip::ZipArchive::new(cursor).map_err(|e| format!("Failed to open VSIX: {}", e))?;
@@ -911,8 +890,7 @@ pub async fn sideload_vsix(
     if ext_dir.exists() {
         std::fs::remove_dir_all(&ext_dir).ok();
     }
-    std::fs::create_dir_all(&ext_dir)
-        .map_err(|e| format!("Failed to create dir: {}", e))?;
+    std::fs::create_dir_all(&ext_dir).map_err(|e| format!("Failed to create dir: {}", e))?;
 
     // Re-read since we consumed the archive
     let vsix_data =
@@ -1074,7 +1052,12 @@ pub async fn start_language_server(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to start language server '{}': {}", server_command, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to start language server '{}': {}",
+                server_command, e
+            )
+        })?;
 
     // Take stdout for reading LSP responses
     let stdout = child
@@ -1247,10 +1230,16 @@ pub async fn get_extension_config_schema(
     state: tauri::State<'_, ExtensionManager>,
 ) -> Result<serde_json::Value, String> {
     let registry = state.registry.lock().map_err(|e| e.to_string())?;
-    let ext = registry.values().find(|e| e.id == id)
+    let ext = registry
+        .values()
+        .find(|e| e.id == id)
         .ok_or(format!("Extension '{}' not found", id))?;
 
-    Ok(ext.contributions.configuration.clone().unwrap_or(serde_json::Value::Null))
+    Ok(ext
+        .contributions
+        .configuration
+        .clone()
+        .unwrap_or(serde_json::Value::Null))
 }
 
 /// Get settings for a specific extension.
@@ -1260,7 +1249,11 @@ pub async fn get_extension_settings(
     settings_state: tauri::State<'_, super::settings::SettingsManager>,
 ) -> Result<serde_json::Value, String> {
     let settings = settings_state.settings.lock().map_err(|e| e.to_string())?;
-    Ok(settings.extension_settings.get(&id).cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new())))
+    Ok(settings
+        .extension_settings
+        .get(&id)
+        .cloned()
+        .unwrap_or(serde_json::Value::Object(serde_json::Map::new())))
 }
 
 /// Update settings for a specific extension.
@@ -1276,8 +1269,8 @@ pub async fn update_extension_settings(
     drop(settings);
     // Re-acquire to save
     let s = settings_state.settings.lock().map_err(|e| e.to_string())?;
-    let path = super::settings::SettingsManager::config_path()
-        .ok_or("Cannot determine config path")?;
+    let path =
+        super::settings::SettingsManager::config_path().ok_or("Cannot determine config path")?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -1313,7 +1306,9 @@ pub async fn check_extension_updates(
     for ext in &installed {
         // ext.id is "namespace.name"
         let parts: Vec<&str> = ext.id.splitn(2, '.').collect();
-        if parts.len() != 2 { continue; }
+        if parts.len() != 2 {
+            continue;
+        }
         let (namespace, name) = (parts[0], parts[1]);
 
         let url = format!("{}/{}/{}", "https://open-vsx.org/api", namespace, name);
@@ -1353,31 +1348,111 @@ pub async fn get_extension_recommendations(
 ) -> Result<Vec<ExtensionRecommendation>, String> {
     // Curated mapping of language to recommended extensions
     let recommendations: Vec<(&str, &str, &str, &str, &str)> = vec![
-        ("python", "ms-python", "python", "Python", "Python language support with IntelliSense"),
-        ("rust", "rust-lang", "rust-analyzer", "rust-analyzer", "Rust language support"),
+        (
+            "python",
+            "ms-python",
+            "python",
+            "Python",
+            "Python language support with IntelliSense",
+        ),
+        (
+            "rust",
+            "rust-lang",
+            "rust-analyzer",
+            "rust-analyzer",
+            "Rust language support",
+        ),
         ("go", "golang", "go", "Go", "Go language support"),
-        ("yaml", "redhat", "vscode-yaml", "YAML", "YAML language support"),
+        (
+            "yaml",
+            "redhat",
+            "vscode-yaml",
+            "YAML",
+            "YAML language support",
+        ),
         ("r", "REditorSupport", "r", "R", "R language support"),
         ("java", "redhat", "java", "Java", "Java language support"),
-        ("typescript", "denoland", "vscode-deno", "Deno", "Deno/TypeScript support"),
-        ("typescriptreact", "denoland", "vscode-deno", "Deno", "Deno/TypeScript React support"),
-        ("json", "vscode", "json-language-features", "JSON", "JSON language features"),
-        ("html", "nicolo-ribaudo", "vscode-html", "HTML", "HTML language support"),
-        ("css", "nicolo-ribaudo", "vscode-css", "CSS", "CSS language support"),
-        ("toml", "tamasfe", "even-better-toml", "Even Better TOML", "TOML language support"),
-        ("markdown", "yzhang", "markdown-all-in-one", "Markdown All in One", "Markdown tools"),
-        ("sql", "mtxr", "sqltools", "SQLTools", "SQL development tools"),
-        ("dockerfile", "exiasr", "hadolint", "hadolint", "Dockerfile linting"),
-        ("shell", "timonwong", "shellcheck", "ShellCheck", "Shell script analysis"),
+        (
+            "typescript",
+            "denoland",
+            "vscode-deno",
+            "Deno",
+            "Deno/TypeScript support",
+        ),
+        (
+            "typescriptreact",
+            "denoland",
+            "vscode-deno",
+            "Deno",
+            "Deno/TypeScript React support",
+        ),
+        (
+            "json",
+            "vscode",
+            "json-language-features",
+            "JSON",
+            "JSON language features",
+        ),
+        (
+            "html",
+            "nicolo-ribaudo",
+            "vscode-html",
+            "HTML",
+            "HTML language support",
+        ),
+        (
+            "css",
+            "nicolo-ribaudo",
+            "vscode-css",
+            "CSS",
+            "CSS language support",
+        ),
+        (
+            "toml",
+            "tamasfe",
+            "even-better-toml",
+            "Even Better TOML",
+            "TOML language support",
+        ),
+        (
+            "markdown",
+            "yzhang",
+            "markdown-all-in-one",
+            "Markdown All in One",
+            "Markdown tools",
+        ),
+        (
+            "sql",
+            "mtxr",
+            "sqltools",
+            "SQLTools",
+            "SQL development tools",
+        ),
+        (
+            "dockerfile",
+            "exiasr",
+            "hadolint",
+            "hadolint",
+            "Dockerfile linting",
+        ),
+        (
+            "shell",
+            "timonwong",
+            "shellcheck",
+            "ShellCheck",
+            "Shell script analysis",
+        ),
     ];
 
     // Filter: only return recommendations for the requested language
     // AND that are not already installed
     let registry = state.registry.lock().map_err(|e| e.to_string())?;
-    let installed_ids: std::collections::HashSet<String> = registry.values().map(|e| e.id.clone()).collect();
+    let installed_ids: std::collections::HashSet<String> =
+        registry.values().map(|e| e.id.clone()).collect();
     drop(registry);
 
-    let results: Vec<ExtensionRecommendation> = recommendations.iter()
+    let results: Vec<ExtensionRecommendation> = recommendations
+        .iter()
         .filter(|(lang, ns, name, _, _)| {
             *lang == language_id && !installed_ids.contains(&format!("{}.{}", ns, name))
         })
@@ -1414,7 +1489,10 @@ pub async fn validate_extension_install(
         if let Some(vscode_ver) = engines.get("vscode").and_then(|v| v.as_str()) {
             // We support up to ~1.85 level API
             if vscode_ver.contains("1.9") || vscode_ver.contains("2.") {
-                warnings.push(format!("Requires VS Code {}, which may be newer than Operon supports", vscode_ver));
+                warnings.push(format!(
+                    "Requires VS Code {}, which may be newer than Operon supports",
+                    vscode_ver
+                ));
             }
         }
     }
@@ -1431,11 +1509,18 @@ pub async fn validate_extension_install(
     // Check platform
     if let Some(target) = detail.get("targetPlatform").and_then(|t| t.as_str()) {
         if target != "universal" && target != "web" {
-            let current_platform = if cfg!(target_os = "macos") { "darwin" }
-                else if cfg!(target_os = "linux") { "linux" }
-                else { "unknown" };
+            let current_platform = if cfg!(target_os = "macos") {
+                "darwin"
+            } else if cfg!(target_os = "linux") {
+                "linux"
+            } else {
+                "unknown"
+            };
             if !target.contains(current_platform) {
-                warnings.push(format!("Extension targets {}, but you're on {}", target, current_platform));
+                warnings.push(format!(
+                    "Extension targets {}, but you're on {}",
+                    target, current_platform
+                ));
             }
         }
     }
@@ -1488,7 +1573,9 @@ pub async fn docker_list_containers() -> Result<Vec<DockerContainer>, String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut containers = Vec::new();
     for line in stdout.lines() {
-        if line.trim().is_empty() { continue; }
+        if line.trim().is_empty() {
+            continue;
+        }
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
             containers.push(DockerContainer {
                 id: val["ID"].as_str().unwrap_or("").to_string(),
@@ -1517,7 +1604,9 @@ pub async fn docker_list_images() -> Result<Vec<DockerImage>, String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut images = Vec::new();
     for line in stdout.lines() {
-        if line.trim().is_empty() { continue; }
+        if line.trim().is_empty() {
+            continue;
+        }
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
             images.push(DockerImage {
                 id: val["ID"].as_str().unwrap_or("").to_string(),
@@ -1545,7 +1634,9 @@ pub async fn docker_list_volumes() -> Result<Vec<DockerVolume>, String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut volumes = Vec::new();
     for line in stdout.lines() {
-        if line.trim().is_empty() { continue; }
+        if line.trim().is_empty() {
+            continue;
+        }
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
             volumes.push(DockerVolume {
                 name: val["Name"].as_str().unwrap_or("").to_string(),
@@ -1558,7 +1649,10 @@ pub async fn docker_list_volumes() -> Result<Vec<DockerVolume>, String> {
 }
 
 #[tauri::command]
-pub async fn docker_container_action(container_id: String, action: String) -> Result<String, String> {
+pub async fn docker_container_action(
+    container_id: String,
+    action: String,
+) -> Result<String, String> {
     let args = match action.as_str() {
         "start" => vec!["start", &container_id],
         "stop" => vec!["stop", &container_id],
@@ -1600,7 +1694,15 @@ pub struct SingularityInstance {
 pub async fn singularity_list_images(search_dir: String) -> Result<Vec<SingularityImage>, String> {
     // Find .sif files in the search directory
     let output = std::process::Command::new("find")
-        .args([&search_dir, "-maxdepth", "3", "-name", "*.sif", "-type", "f"])
+        .args([
+            &search_dir,
+            "-maxdepth",
+            "3",
+            "-name",
+            "*.sif",
+            "-type",
+            "f",
+        ])
         .output()
         .map_err(|e| format!("Failed to search for images: {}", e))?;
 
@@ -1608,7 +1710,9 @@ pub async fn singularity_list_images(search_dir: String) -> Result<Vec<Singulari
     let mut images = Vec::new();
     for line in stdout.lines() {
         let path = line.trim();
-        if path.is_empty() { continue; }
+        if path.is_empty() {
+            continue;
+        }
         let name = std::path::Path::new(path)
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -1622,7 +1726,8 @@ pub async fn singularity_list_images(search_dir: String) -> Result<Vec<Singulari
                 } else {
                     format!("{:.0} MB", size_mb)
                 };
-                let mod_time = m.modified()
+                let mod_time = m
+                    .modified()
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|d| {
@@ -1630,17 +1735,28 @@ pub async fn singularity_list_images(search_dir: String) -> Result<Vec<Singulari
                         let days_ago = (std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
-                            .as_secs() - secs) / 86400;
-                        if days_ago == 0 { "today".to_string() }
-                        else if days_ago == 1 { "yesterday".to_string() }
-                        else { format!("{} days ago", days_ago) }
+                            .as_secs()
+                            - secs)
+                            / 86400;
+                        if days_ago == 0 {
+                            "today".to_string()
+                        } else if days_ago == 1 {
+                            "yesterday".to_string()
+                        } else {
+                            format!("{} days ago", days_ago)
+                        }
                     })
                     .unwrap_or_default();
                 (size_str, mod_time)
             }
             Err(_) => ("unknown".to_string(), "unknown".to_string()),
         };
-        images.push(SingularityImage { name, path: path.to_string(), size, modified });
+        images.push(SingularityImage {
+            name,
+            path: path.to_string(),
+            size,
+            modified,
+        });
     }
     Ok(images)
 }
@@ -1648,7 +1764,11 @@ pub async fn singularity_list_images(search_dir: String) -> Result<Vec<Singulari
 #[tauri::command]
 pub async fn singularity_list_instances() -> Result<Vec<SingularityInstance>, String> {
     // Try apptainer first, then singularity
-    let cmd = if std::process::Command::new("apptainer").arg("--version").output().is_ok() {
+    let cmd = if std::process::Command::new("apptainer")
+        .arg("--version")
+        .output()
+        .is_ok()
+    {
         "apptainer"
     } else {
         "singularity"
@@ -1668,7 +1788,10 @@ pub async fn singularity_list_instances() -> Result<Vec<SingularityInstance>, St
             for inst in list {
                 instances.push(SingularityInstance {
                     name: inst["instance"].as_str().unwrap_or("").to_string(),
-                    pid: inst["pid"].as_u64().map(|p| p.to_string()).unwrap_or_default(),
+                    pid: inst["pid"]
+                        .as_u64()
+                        .map(|p| p.to_string())
+                        .unwrap_or_default(),
                     image: inst["img"].as_str().unwrap_or("").to_string(),
                 });
             }
@@ -1678,8 +1801,16 @@ pub async fn singularity_list_instances() -> Result<Vec<SingularityInstance>, St
 }
 
 #[tauri::command]
-pub async fn singularity_action(action: String, image_path: String, instance_name: Option<String>) -> Result<String, String> {
-    let cmd = if std::process::Command::new("apptainer").arg("--version").output().is_ok() {
+pub async fn singularity_action(
+    action: String,
+    image_path: String,
+    instance_name: Option<String>,
+) -> Result<String, String> {
+    let cmd = if std::process::Command::new("apptainer")
+        .arg("--version")
+        .output()
+        .is_ok()
+    {
         "apptainer"
     } else {
         "singularity"
@@ -1739,11 +1870,16 @@ pub async fn start_remote_language_server(
 ) -> Result<LspServerInfo, String> {
     // Build the remote command: start the language server via SSH
     let args_str = server_args.join(" ");
-    let remote_cmd = format!("cd {} && {} {} 2>/dev/null", workspace_path, server_command, args_str);
+    let remote_cmd = format!(
+        "cd {} && {} {} 2>/dev/null",
+        workspace_path, server_command, args_str
+    );
 
     // Get SSH profile
     let profiles = ssh_state.profiles.lock().map_err(|e| e.to_string())?;
-    let profile = profiles.iter().find(|p| p.id == ssh_profile_id)
+    let profile = profiles
+        .iter()
+        .find(|p| p.id == ssh_profile_id)
         .ok_or(format!("SSH profile '{}' not found", ssh_profile_id))?
         .clone();
     drop(profiles);
@@ -1753,8 +1889,10 @@ pub async fn start_remote_language_server(
     // Spawn SSH process with the language server command
     // The SSH session acts as a pipe: stdin → remote server stdin, remote server stdout → our stdout
     let mut ssh_args = vec![
-        "-o".to_string(), "StrictHostKeyChecking=no".to_string(),
-        "-o".to_string(), "BatchMode=yes".to_string(),
+        "-o".to_string(),
+        "StrictHostKeyChecking=no".to_string(),
+        "-o".to_string(),
+        "BatchMode=yes".to_string(),
     ];
 
     // Add port if non-default
@@ -1813,18 +1951,27 @@ pub async fn start_remote_language_server(
                     Ok(_) => header_buf.push(byte[0] as char),
                     Err(_) => return,
                 }
-                if header_buf.ends_with("\r\n\r\n") { break; }
+                if header_buf.ends_with("\r\n\r\n") {
+                    break;
+                }
             }
-            let content_length: usize = header_buf.lines()
+            let content_length: usize = header_buf
+                .lines()
                 .find_map(|line| {
                     if line.to_lowercase().starts_with("content-length:") {
                         line.split(':').nth(1)?.trim().parse().ok()
-                    } else { None }
+                    } else {
+                        None
+                    }
                 })
                 .unwrap_or(0);
-            if content_length == 0 { continue; }
+            if content_length == 0 {
+                continue;
+            }
             let mut body = vec![0u8; content_length];
-            if reader.read_exact(&mut body).is_err() { return; }
+            if reader.read_exact(&mut body).is_err() {
+                return;
+            }
             if let Ok(body_str) = String::from_utf8(body) {
                 let _ = app.emit(&format!("lsp-message-{}", sid), &body_str);
             }
@@ -1844,7 +1991,11 @@ pub async fn start_remote_language_server(
         }
     });
 
-    Ok(LspServerInfo { server_id, extension_id, languages })
+    Ok(LspServerInfo {
+        server_id,
+        extension_id,
+        languages,
+    })
 }
 
 /// Install an extension on a remote machine.
@@ -1858,7 +2009,9 @@ pub async fn install_remote_extension(
 ) -> Result<(), String> {
     let profile = {
         let profiles = ssh_state.profiles.lock().map_err(|e| e.to_string())?;
-        profiles.iter().find(|p| p.id == ssh_profile_id)
+        profiles
+            .iter()
+            .find(|p| p.id == ssh_profile_id)
             .ok_or(format!("SSH profile '{}' not found", ssh_profile_id))?
             .clone()
     };
@@ -1876,7 +2029,11 @@ pub async fn install_remote_extension(
 
     // Download VSIX to temp
     let tmp_path = crate::platform::temp_dir().join(format!("{}.{}.vsix", namespace, name));
-    let resp = client.get(&download_url).send().await.map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&download_url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
     std::fs::write(&tmp_path, &bytes).map_err(|e| e.to_string())?;
 

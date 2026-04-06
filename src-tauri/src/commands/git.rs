@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, Emitter};
+use tauri::{Emitter, Manager};
 
 /// Run a shell command in a specific directory, return stdout or error
 fn run_in_dir(command: &str, dir: &str) -> Result<String, String> {
@@ -60,31 +60,39 @@ pub async fn git_status(project_path: String) -> Result<GitStatus, String> {
         });
     }
 
-    let branch = run_in_dir("git branch --show-current", &project_path)
-        .unwrap_or_default();
+    let branch = run_in_dir("git branch --show-current", &project_path).unwrap_or_default();
 
     // Count changed, staged, untracked
-    let status_output = run_in_dir("git status --porcelain", &project_path)
-        .unwrap_or_default();
+    let status_output = run_in_dir("git status --porcelain", &project_path).unwrap_or_default();
 
     let mut changed: u32 = 0;
     let mut staged: u32 = 0;
     let mut untracked: u32 = 0;
 
     for line in status_output.lines() {
-        if line.len() < 2 { continue; }
+        if line.len() < 2 {
+            continue;
+        }
         let xy: Vec<char> = line.chars().take(2).collect();
-        if xy[0] == '?' { untracked += 1; }
-        else {
-            if xy[0] != ' ' && xy[0] != '?' { staged += 1; }
-            if xy[1] != ' ' && xy[1] != '?' { changed += 1; }
+        if xy[0] == '?' {
+            untracked += 1;
+        } else {
+            if xy[0] != ' ' && xy[0] != '?' {
+                staged += 1;
+            }
+            if xy[1] != ' ' && xy[1] != '?' {
+                changed += 1;
+            }
         }
     }
 
     // Ahead/behind
     let mut ahead: u32 = 0;
     let mut behind: u32 = 0;
-    if let Ok(ab) = run_in_dir("git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null", &project_path) {
+    if let Ok(ab) = run_in_dir(
+        "git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null",
+        &project_path,
+    ) {
         let parts: Vec<&str> = ab.split_whitespace().collect();
         if parts.len() == 2 {
             ahead = parts[0].parse().unwrap_or(0);
@@ -93,15 +101,15 @@ pub async fn git_status(project_path: String) -> Result<GitStatus, String> {
     }
 
     // Remote URL
-    let remote_url = run_in_dir("git remote get-url origin 2>/dev/null", &project_path)
-        .unwrap_or_default();
+    let remote_url =
+        run_in_dir("git remote get-url origin 2>/dev/null", &project_path).unwrap_or_default();
     let has_remote = !remote_url.is_empty();
 
     // Last commit
-    let last_commit_message = run_in_dir("git log -1 --format=%s 2>/dev/null", &project_path)
-        .unwrap_or_default();
-    let last_commit_time = run_in_dir("git log -1 --format=%ar 2>/dev/null", &project_path)
-        .unwrap_or_default();
+    let last_commit_message =
+        run_in_dir("git log -1 --format=%s 2>/dev/null", &project_path).unwrap_or_default();
+    let last_commit_time =
+        run_in_dir("git log -1 --format=%ar 2>/dev/null", &project_path).unwrap_or_default();
 
     Ok(GitStatus {
         is_repo,
@@ -219,7 +227,10 @@ pub async fn gh_install() -> Result<(), String> {
         let cmd = if pkg_mgr.contains("brew") {
             format!("{} install gh", pkg_mgr)
         } else if pkg_mgr.contains("winget") {
-            format!("{} install --id GitHub.cli --accept-source-agreements --accept-package-agreements", pkg_mgr)
+            format!(
+                "{} install --id GitHub.cli --accept-source-agreements --accept-package-agreements",
+                pkg_mgr
+            )
         } else {
             // apt
             "sudo apt-get install -y gh".to_string()
@@ -228,7 +239,10 @@ pub async fn gh_install() -> Result<(), String> {
         run_in_dir(&cmd, &tmp)?;
         Ok(())
     } else {
-        Err("No package manager found. Please install GitHub CLI manually: https://cli.github.com".to_string())
+        Err(
+            "No package manager found. Please install GitHub CLI manually: https://cli.github.com"
+                .to_string(),
+        )
     }
 }
 
@@ -352,9 +366,7 @@ pub async fn git_version_info(project_path: String) -> Result<VersionInfo, Strin
         .unwrap_or_else(|_| "v0.0.0".to_string());
 
     let version = current.trim_start_matches('v');
-    let parts: Vec<u32> = version.split('.')
-        .map(|p| p.parse().unwrap_or(0))
-        .collect();
+    let parts: Vec<u32> = version.split('.').map(|p| p.parse().unwrap_or(0)).collect();
 
     let (major, minor, patch) = (
         parts.first().copied().unwrap_or(0),
@@ -381,7 +393,11 @@ pub async fn git_tag_version(project_path: String, version: String) -> Result<()
     let safe_version = version.replace('\'', "'\\''");
     run_in_dir(&format!("git tag '{}'", safe_version), &project_path)?;
     // Push the tag
-    run_in_dir(&format!("git push origin '{}'", safe_version), &project_path).ok();
+    run_in_dir(
+        &format!("git push origin '{}'", safe_version),
+        &project_path,
+    )
+    .ok();
     Ok(())
 }
 
@@ -410,12 +426,20 @@ pub async fn git_publish(
     // Tagging: explicit tag overrides auto-version
     if let Some(tag) = version_tag {
         if !tag.is_empty() {
-            run_in_dir(&format!("git tag '{}'", tag.replace('\'', "'\\''")), &project_path).ok();
+            run_in_dir(
+                &format!("git tag '{}'", tag.replace('\'', "'\\''")),
+                &project_path,
+            )
+            .ok();
         }
     } else if auto_version {
         let version_info = git_version_info(project_path.clone()).await?;
         let new_tag = version_info.next_patch;
-        run_in_dir(&format!("git tag '{}'", new_tag.replace('\'', "'\\''")), &project_path).ok();
+        run_in_dir(
+            &format!("git tag '{}'", new_tag.replace('\'', "'\\''")),
+            &project_path,
+        )
+        .ok();
     }
 
     // Determine which branch to push
@@ -428,12 +452,18 @@ pub async fn git_publish(
     let push_cmd = if local_branch == push_target {
         format!("git push -u origin '{}' --follow-tags", safe_target)
     } else {
-        format!("git push -u origin '{}:{}' --follow-tags", local_branch, safe_target)
+        format!(
+            "git push -u origin '{}:{}' --follow-tags",
+            local_branch, safe_target
+        )
     };
 
     let push_result = run_in_dir(&push_cmd, &project_path)?;
 
-    Ok(format!("Published to {} successfully. {}", push_target, push_result))
+    Ok(format!(
+        "Published to {} successfully. {}",
+        push_target, push_result
+    ))
 }
 
 // ──────────────────────────────────────────────
@@ -443,7 +473,7 @@ pub async fn git_publish(
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GhRepo {
     pub name: String,
-    pub full_name: String,   // owner/repo
+    pub full_name: String, // owner/repo
     pub private: bool,
     pub url: String,
     pub description: String,
@@ -453,10 +483,10 @@ pub struct GhRepo {
 #[tauri::command]
 pub async fn gh_list_repos() -> Result<Vec<GhRepo>, String> {
     let output = crate::platform::shell_exec(
-        "gh repo list --limit 100 --json name,nameWithOwner,isPrivate,url,description"
+        "gh repo list --limit 100 --json name,nameWithOwner,isPrivate,url,description",
     )
-        .output()
-        .map_err(|e| format!("Failed to list repos: {}", e))?;
+    .output()
+    .map_err(|e| format!("Failed to list repos: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -464,16 +494,19 @@ pub async fn gh_list_repos() -> Result<Vec<GhRepo>, String> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let raw: Vec<serde_json::Value> = serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse repo list: {}", e))?;
+    let raw: Vec<serde_json::Value> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse repo list: {}", e))?;
 
-    let repos = raw.iter().map(|r| GhRepo {
-        name: r["name"].as_str().unwrap_or("").to_string(),
-        full_name: r["nameWithOwner"].as_str().unwrap_or("").to_string(),
-        private: r["isPrivate"].as_bool().unwrap_or(false),
-        url: r["url"].as_str().unwrap_or("").to_string(),
-        description: r["description"].as_str().unwrap_or("").to_string(),
-    }).collect();
+    let repos = raw
+        .iter()
+        .map(|r| GhRepo {
+            name: r["name"].as_str().unwrap_or("").to_string(),
+            full_name: r["nameWithOwner"].as_str().unwrap_or("").to_string(),
+            private: r["isPrivate"].as_bool().unwrap_or(false),
+            url: r["url"].as_str().unwrap_or("").to_string(),
+            description: r["description"].as_str().unwrap_or("").to_string(),
+        })
+        .collect();
 
     Ok(repos)
 }
@@ -490,7 +523,13 @@ pub async fn gh_add_remote(
     let safe_name = name.replace('\'', "'\\''");
 
     // Remove existing remote if it exists, then add the new one
-    run_in_dir(&format!("git remote remove '{}' 2>/dev/null; git remote add '{}' '{}'", safe_name, safe_name, safe_url), &project_path)?;
+    run_in_dir(
+        &format!(
+            "git remote remove '{}' 2>/dev/null; git remote add '{}' '{}'",
+            safe_name, safe_name, safe_url
+        ),
+        &project_path,
+    )?;
     Ok(())
 }
 
@@ -526,8 +565,10 @@ pub async fn git_list_branches(project_path: String) -> Result<BranchInfo, Strin
     if let Ok(remote_raw) = run_in_dir("git branch -r --no-color", &project_path) {
         for line in remote_raw.lines() {
             let line = line.trim();
-            if line.contains("->") { continue; } // skip HEAD -> origin/main
-            // Strip remote prefix: "origin/main" → "main"
+            if line.contains("->") {
+                continue;
+            } // skip HEAD -> origin/main
+              // Strip remote prefix: "origin/main" → "main"
             let name = line.split('/').skip(1).collect::<Vec<_>>().join("/");
             if !name.is_empty() && !branches.contains(&name) {
                 remote_branches.push(name);
@@ -537,12 +578,20 @@ pub async fn git_list_branches(project_path: String) -> Result<BranchInfo, Strin
     remote_branches.sort();
     remote_branches.dedup();
 
-    Ok(BranchInfo { current, branches, remote_branches })
+    Ok(BranchInfo {
+        current,
+        branches,
+        remote_branches,
+    })
 }
 
 /// Switch to a branch (create it if it doesn't exist).
 #[tauri::command]
-pub async fn git_switch_branch(project_path: String, branch: String, create: bool) -> Result<(), String> {
+pub async fn git_switch_branch(
+    project_path: String,
+    branch: String,
+    create: bool,
+) -> Result<(), String> {
     let safe_branch = branch.replace('\'', "'\\''");
     if create {
         run_in_dir(&format!("git checkout -b '{}'", safe_branch), &project_path)?;
@@ -565,7 +614,7 @@ pub async fn git_pull(project_path: String) -> Result<String, String> {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChangedFile {
     pub path: String,
-    pub status: String,     // "M" modified, "A" added, "D" deleted, "R" renamed, "?" untracked
+    pub status: String, // "M" modified, "A" added, "D" deleted, "R" renamed, "?" untracked
     pub staged: bool,
 }
 
@@ -575,7 +624,9 @@ pub async fn git_changed_files(project_path: String) -> Result<Vec<ChangedFile>,
     let raw = run_in_dir("git status --porcelain", &project_path)?;
     let mut files = Vec::new();
     for line in raw.lines() {
-        if line.len() < 3 { continue; }
+        if line.len() < 3 {
+            continue;
+        }
         let index_status = line.chars().nth(0).unwrap_or(' ');
         let worktree_status = line.chars().nth(1).unwrap_or(' ');
         let path = line[3..].trim().to_string();
@@ -584,7 +635,11 @@ pub async fn git_changed_files(project_path: String) -> Result<Vec<ChangedFile>,
 
         if index_status == '?' {
             // Untracked file
-            files.push(ChangedFile { path, status: "?".to_string(), staged: false });
+            files.push(ChangedFile {
+                path,
+                status: "?".to_string(),
+                staged: false,
+            });
         } else {
             // If index has a status, it's staged
             if index_status != ' ' {
@@ -644,12 +699,16 @@ pub async fn git_discard_files(project_path: String, paths: Vec<String>) -> Resu
         // For untracked files, remove them; for tracked, checkout from HEAD
         let is_untracked = run_in_dir(
             &format!("git ls-files --error-unmatch '{}' 2>/dev/null", safe_path),
-            &project_path
-        ).is_err();
+            &project_path,
+        )
+        .is_err();
         if is_untracked {
             run_in_dir(&format!("rm -f '{}'", safe_path), &project_path)?;
         } else {
-            run_in_dir(&format!("git checkout HEAD -- '{}'", safe_path), &project_path)?;
+            run_in_dir(
+                &format!("git checkout HEAD -- '{}'", safe_path),
+                &project_path,
+            )?;
         }
     }
     Ok(())
@@ -669,15 +728,17 @@ pub struct StashEntry {
 /// List stash entries.
 #[tauri::command]
 pub async fn git_stash_list(project_path: String) -> Result<Vec<StashEntry>, String> {
-    let raw = run_in_dir("git stash list --format='%gd|||%gs|||%ar'", &project_path)
-        .unwrap_or_default();
+    let raw =
+        run_in_dir("git stash list --format='%gd|||%gs|||%ar'", &project_path).unwrap_or_default();
     let mut entries = Vec::new();
     for line in raw.lines() {
         let parts: Vec<&str> = line.split("|||").collect();
         if parts.len() >= 3 {
             let index: u32 = parts[0]
-                .replace("stash@{", "").replace("}", "")
-                .parse().unwrap_or(0);
+                .replace("stash@{", "")
+                .replace("}", "")
+                .parse()
+                .unwrap_or(0);
             entries.push(StashEntry {
                 index,
                 message: parts[1].to_string(),
@@ -692,7 +753,9 @@ pub async fn git_stash_list(project_path: String) -> Result<Vec<StashEntry>, Str
 #[tauri::command]
 pub async fn git_stash_save(project_path: String, message: Option<String>) -> Result<(), String> {
     let cmd = match message {
-        Some(msg) if !msg.is_empty() => format!("git stash push -m '{}'", msg.replace('\'', "'\\''")),
+        Some(msg) if !msg.is_empty() => {
+            format!("git stash push -m '{}'", msg.replace('\'', "'\\''"))
+        }
         _ => "git stash push".to_string(),
     };
     run_in_dir(&cmd, &project_path)?;
@@ -713,7 +776,10 @@ pub async fn git_stash_pop(project_path: String, index: Option<u32>) -> Result<(
 /// Drop a stash entry.
 #[tauri::command]
 pub async fn git_stash_drop(project_path: String, index: u32) -> Result<(), String> {
-    run_in_dir(&format!("git stash drop stash@{{{}}}", index), &project_path)?;
+    run_in_dir(
+        &format!("git stash drop stash@{{{}}}", index),
+        &project_path,
+    )?;
     Ok(())
 }
 
@@ -736,8 +802,11 @@ pub struct CommitEntry {
 pub async fn git_log(project_path: String, count: Option<u32>) -> Result<Vec<CommitEntry>, String> {
     let n = count.unwrap_or(30);
     let raw = run_in_dir(
-        &format!("git log --format='%H|||%h|||%s|||%an|||%ar|||' --shortstat -n {}", n),
-        &project_path
+        &format!(
+            "git log --format='%H|||%h|||%s|||%an|||%ar|||' --shortstat -n {}",
+            n
+        ),
+        &project_path,
     )?;
 
     let mut entries = Vec::new();
@@ -749,7 +818,12 @@ pub async fn git_log(project_path: String, count: Option<u32>) -> Result<Vec<Com
             // Save previous entry
             if let Some((hash, short, msg, author, date)) = current.take() {
                 entries.push(CommitEntry {
-                    hash, short_hash: short, message: msg, author, date, files_changed: 0,
+                    hash,
+                    short_hash: short,
+                    message: msg,
+                    author,
+                    date,
+                    files_changed: 0,
                 });
             }
             let parts: Vec<&str> = line.split("|||").collect();
@@ -764,13 +838,19 @@ pub async fn git_log(project_path: String, count: Option<u32>) -> Result<Vec<Com
             }
         } else if line.contains("file") && line.contains("changed") {
             // shortstat line: " 3 files changed, 10 insertions(+), 2 deletions(-)"
-            let files: u32 = line.split_whitespace()
+            let files: u32 = line
+                .split_whitespace()
                 .next()
                 .and_then(|n| n.parse().ok())
                 .unwrap_or(0);
             if let Some((hash, short, msg, author, date)) = current.take() {
                 entries.push(CommitEntry {
-                    hash, short_hash: short, message: msg, author, date, files_changed: files,
+                    hash,
+                    short_hash: short,
+                    message: msg,
+                    author,
+                    date,
+                    files_changed: files,
                 });
             }
         }
@@ -778,7 +858,12 @@ pub async fn git_log(project_path: String, count: Option<u32>) -> Result<Vec<Com
     // Push the last entry if no shortstat followed
     if let Some((hash, short, msg, author, date)) = current {
         entries.push(CommitEntry {
-            hash, short_hash: short, message: msg, author, date, files_changed: 0,
+            hash,
+            short_hash: short,
+            message: msg,
+            author,
+            date,
+            files_changed: 0,
         });
     }
 
@@ -789,14 +874,19 @@ pub async fn git_log(project_path: String, count: Option<u32>) -> Result<Vec<Com
 #[tauri::command]
 pub async fn git_show_commit(project_path: String, hash: String) -> Result<String, String> {
     let safe_hash = hash.replace('\'', "'\\''");
-    run_in_dir(&format!("git show --stat '{}' 2>/dev/null", safe_hash), &project_path)
+    run_in_dir(
+        &format!("git show --stat '{}' 2>/dev/null", safe_hash),
+        &project_path,
+    )
 }
 
 /// Amend the last commit with currently staged changes and optional new message.
 #[tauri::command]
 pub async fn git_amend(project_path: String, message: Option<String>) -> Result<(), String> {
     let cmd = match message {
-        Some(msg) if !msg.is_empty() => format!("git commit --amend -m '{}'", msg.replace('\'', "'\\''")),
+        Some(msg) if !msg.is_empty() => {
+            format!("git commit --amend -m '{}'", msg.replace('\'', "'\\''"))
+        }
         _ => "git commit --amend --no-edit".to_string(),
     };
     run_in_dir(&cmd, &project_path)?;

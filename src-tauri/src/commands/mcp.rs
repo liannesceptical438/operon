@@ -190,7 +190,10 @@ fn claude_mcp_add(server: &MCPServerConfig) -> Result<(), String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("[operon] claude mcp add-json for '{}' failed: {}", server.name, stderr);
+        eprintln!(
+            "[operon] claude mcp add-json for '{}' failed: {}",
+            server.name, stderr
+        );
     }
     Ok(())
 }
@@ -204,7 +207,10 @@ fn claude_mcp_remove(name: &str) -> Result<(), String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("[operon] claude mcp remove for '{}' failed: {}", name, stderr);
+        eprintln!(
+            "[operon] claude mcp remove for '{}' failed: {}",
+            name, stderr
+        );
     }
     Ok(())
 }
@@ -227,10 +233,7 @@ pub fn sync_mcp_servers_to_claude(mcp_servers: &[MCPServerConfig]) -> Result<(),
 /// Generate ~/.operon/mcp-config.json from enabled MCP servers.
 /// Returns the path to the config file, or None if no servers are enabled.
 pub fn generate_mcp_config(mcp_servers: &[MCPServerConfig]) -> Result<Option<String>, String> {
-    let enabled_servers: Vec<&MCPServerConfig> = mcp_servers
-        .iter()
-        .filter(|s| s.enabled)
-        .collect();
+    let enabled_servers: Vec<&MCPServerConfig> = mcp_servers.iter().filter(|s| s.enabled).collect();
 
     if enabled_servers.is_empty() {
         return Ok(None);
@@ -257,18 +260,14 @@ pub fn generate_mcp_config(mcp_servers: &[MCPServerConfig]) -> Result<Option<Str
     let config_path = config_dir.join("mcp-config.json");
     let json = serde_json::to_string_pretty(&serde_json::Value::Object(config))
         .map_err(|e| format!("Failed to serialize MCP config: {}", e))?;
-    std::fs::write(&config_path, json)
-        .map_err(|e| format!("Failed to write MCP config: {}", e))?;
+    std::fs::write(&config_path, json).map_err(|e| format!("Failed to write MCP config: {}", e))?;
 
     Ok(Some(config_path.to_string_lossy().to_string()))
 }
 
 /// Generate MCP config JSON string (for writing to remote hosts).
 pub fn generate_mcp_config_json(mcp_servers: &[MCPServerConfig]) -> Result<Option<String>, String> {
-    let enabled_servers: Vec<&MCPServerConfig> = mcp_servers
-        .iter()
-        .filter(|s| s.enabled)
-        .collect();
+    let enabled_servers: Vec<&MCPServerConfig> = mcp_servers.iter().filter(|s| s.enabled).collect();
 
     if enabled_servers.is_empty() {
         return Ok(None);
@@ -312,9 +311,10 @@ pub async fn list_mcp_servers(
 
     // Add configured servers
     for server in &settings.mcp_servers {
-        let catalog_entry = server.catalog_id.as_ref().and_then(|id| {
-            catalog.iter().find(|c| &c.id == id).cloned()
-        });
+        let catalog_entry = server
+            .catalog_id
+            .as_ref()
+            .and_then(|id| catalog.iter().find(|c| &c.id == id).cloned());
         result.push(MCPServerStatus {
             config: server.clone(),
             from_catalog: catalog_entry.is_some(),
@@ -324,9 +324,10 @@ pub async fn list_mcp_servers(
 
     // Add catalog entries that aren't yet configured
     for entry in &catalog {
-        let already_configured = settings.mcp_servers.iter().any(|s| {
-            s.catalog_id.as_ref() == Some(&entry.id)
-        });
+        let already_configured = settings
+            .mcp_servers
+            .iter()
+            .any(|s| s.catalog_id.as_ref() == Some(&entry.id));
         if !already_configured {
             result.push(MCPServerStatus {
                 config: entry.config.clone(),
@@ -443,7 +444,9 @@ pub async fn install_mcp_server(
     catalog_id: String,
 ) -> Result<(), String> {
     let catalog = get_research_catalog();
-    let entry = catalog.iter().find(|c| c.id == catalog_id)
+    let entry = catalog
+        .iter()
+        .find(|c| c.id == catalog_id)
         .ok_or(format!("Catalog entry '{}' not found", catalog_id))?;
 
     // Check dependency first
@@ -459,7 +462,9 @@ pub async fn install_mcp_server(
     let mut settings = settings_state.settings.lock().map_err(|e| e.to_string())?;
 
     // Remove existing if present, then add fresh
-    settings.mcp_servers.retain(|s| s.catalog_id.as_ref() != Some(&catalog_id));
+    settings
+        .mcp_servers
+        .retain(|s| s.catalog_id.as_ref() != Some(&catalog_id));
 
     let mut config = entry.config.clone();
     config.enabled = true;
@@ -512,7 +517,9 @@ pub async fn check_remote_mcp_dependencies(
 
     // Get SSH profile
     let profiles = ssh_state.profiles.lock().map_err(|e| e.to_string())?;
-    let profile = profiles.iter().find(|p| p.id == ssh_profile)
+    let profile = profiles
+        .iter()
+        .find(|p| p.id == ssh_profile)
         .ok_or(format!("SSH profile '{}' not found", ssh_profile))?
         .clone();
     drop(profiles);
@@ -561,22 +568,30 @@ pub async fn install_remote_mcp_server(
     ssh_state: tauri::State<'_, super::ssh::SSHManager>,
 ) -> Result<(), String> {
     let catalog = get_research_catalog();
-    let entry = catalog.iter().find(|c| c.id == catalog_id)
+    let entry = catalog
+        .iter()
+        .find(|c| c.id == catalog_id)
         .ok_or(format!("Catalog entry '{}' not found", catalog_id))?;
 
     let profiles = ssh_state.profiles.lock().map_err(|e| e.to_string())?;
-    let profile = profiles.iter().find(|p| p.id == ssh_profile)
+    let profile = profiles
+        .iter()
+        .find(|p| p.id == ssh_profile)
         .ok_or(format!("SSH profile '{}' not found", ssh_profile))?
         .clone();
     drop(profiles);
 
     let install_cmd = match entry.runtime.as_str() {
-        "node" => format!("npm install -g {} 2>&1 || npx {} --help >/dev/null 2>&1 && echo OK",
+        "node" => format!(
+            "npm install -g {} 2>&1 || npx {} --help >/dev/null 2>&1 && echo OK",
             entry.config.args.first().unwrap_or(&entry.config.command),
-            entry.config.args.first().unwrap_or(&entry.config.command)),
-        "python" => format!("pip install {} 2>&1 || pip3 install {} 2>&1",
+            entry.config.args.first().unwrap_or(&entry.config.command)
+        ),
+        "python" => format!(
+            "pip install {} 2>&1 || pip3 install {} 2>&1",
             entry.config.args.first().unwrap_or(&entry.config.command),
-            entry.config.args.first().unwrap_or(&entry.config.command)),
+            entry.config.args.first().unwrap_or(&entry.config.command)
+        ),
         _ => return Err(format!("Unknown runtime: {}", entry.runtime)),
     };
 
@@ -616,21 +631,20 @@ async fn check_runtime(runtime: &str) -> Result<DependencyStatus, String> {
     let (cmd, args, min_version, install_hint) = match runtime {
         "node" => ("node", vec!["--version"], "20.0.0", node_install_hint),
         "python" => (python_cmd, vec!["--version"], "3.10.0", python_install_hint),
-        _ => return Ok(DependencyStatus {
-            satisfied: false,
-            runtime: runtime.to_string(),
-            runtime_found: false,
-            runtime_version: None,
-            min_version: "unknown".to_string(),
-            install_hint: format!("Unknown runtime: {}", runtime),
-            package_installed: false,
-        }),
+        _ => {
+            return Ok(DependencyStatus {
+                satisfied: false,
+                runtime: runtime.to_string(),
+                runtime_found: false,
+                runtime_version: None,
+                min_version: "unknown".to_string(),
+                install_hint: format!("Unknown runtime: {}", runtime),
+                package_installed: false,
+            })
+        }
     };
 
-    let output = tokio::process::Command::new(cmd)
-        .args(&args)
-        .output()
-        .await;
+    let output = tokio::process::Command::new(cmd).args(&args).output().await;
 
     match output {
         Ok(out) if out.status.success() => {
@@ -646,17 +660,14 @@ async fn check_runtime(runtime: &str) -> Result<DependencyStatus, String> {
                 package_installed: true,
             })
         }
-        _ => {
-            Ok(DependencyStatus {
-                satisfied: false,
-                runtime: runtime.to_string(),
-                runtime_found: false,
-                runtime_version: None,
-                min_version: min_version.to_string(),
-                install_hint: install_hint.to_string(),
-                package_installed: false,
-            })
-        }
+        _ => Ok(DependencyStatus {
+            satisfied: false,
+            runtime: runtime.to_string(),
+            runtime_found: false,
+            runtime_version: None,
+            min_version: min_version.to_string(),
+            install_hint: install_hint.to_string(),
+            package_installed: false,
+        }),
     }
 }
-

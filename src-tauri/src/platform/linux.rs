@@ -28,7 +28,9 @@ pub fn default_shell() -> String {
 
 pub fn check_tool(name: &str) -> Option<(String, String)> {
     let which = shell_exec(&format!("which {}", name)).output().ok()?;
-    if !which.status.success() { return None; }
+    if !which.status.success() {
+        return None;
+    }
     let path = String::from_utf8_lossy(&which.stdout).trim().to_string();
     let ver_out = shell_exec(&format!("{} --version", name)).output().ok()?;
     let version = String::from_utf8_lossy(&ver_out.stdout).trim().to_string();
@@ -70,7 +72,9 @@ pub fn open_terminal_with_command(command: &str) -> Result<(), String> {
                 .args(["-e", &format!("bash -c '{}; exec bash'", command)])
                 .spawn(),
         };
-        if result.is_ok() { return Ok(()); }
+        if result.is_ok() {
+            return Ok(());
+        }
     }
     Err("No terminal emulator found. Please install gnome-terminal, konsole, or xterm.".to_string())
 }
@@ -90,7 +94,10 @@ pub fn ssh_mux_check(host: &str, port: u16, user: &str) -> bool {
     let sock = super::ssh_socket_path(host, port, user);
     let check_cmd = format!(
         "ssh -o \"ControlPath={}\" -O check {}@{} -p {} 2>/dev/null",
-        sock.display(), user, host, port
+        sock.display(),
+        user,
+        host,
+        port
     );
     shell_exec(&check_cmd)
         .output()
@@ -124,14 +131,20 @@ pub fn install_node_platform() -> Result<(), String> {
     if has_sudo {
         let result = shell_exec("sudo apt-get install -y nodejs npm").output();
         if let Ok(o) = result {
-            if o.status.success() { return Ok(()); }
+            if o.status.success() {
+                return Ok(());
+            }
         }
     }
 
     // Strategy 2: Tarball to operon data dir (no sudo needed)
-    let arch = if cfg!(target_arch = "x86_64") { "x64" }
-              else if cfg!(target_arch = "aarch64") { "arm64" }
-              else { "x64" };
+    let arch = if cfg!(target_arch = "x86_64") {
+        "x64"
+    } else if cfg!(target_arch = "aarch64") {
+        "arm64"
+    } else {
+        "x64"
+    };
     let node_version = "v22.14.0";
     let tarball_url = format!(
         "https://nodejs.org/dist/{}/node-{}-linux-{}.tar.gz",
@@ -149,10 +162,15 @@ pub fn install_node_platform() -> Result<(), String> {
         .map_err(|e| format!("curl failed: {}", e))?;
 
     if !dl.status.success() {
-        return Err(format!("Download failed: {}", String::from_utf8_lossy(&dl.stderr)));
+        return Err(format!(
+            "Download failed: {}",
+            String::from_utf8_lossy(&dl.stderr)
+        ));
     }
 
-    if dest.exists() { let _ = std::fs::remove_dir_all(&dest); }
+    if dest.exists() {
+        let _ = std::fs::remove_dir_all(&dest);
+    }
     std::fs::create_dir_all(&dest)
         .map_err(|e| format!("Failed to create {}: {}", dest.display(), e))?;
 
@@ -165,7 +183,10 @@ pub fn install_node_platform() -> Result<(), String> {
         .map_err(|e| format!("tar failed: {}", e))?;
 
     if !extract.status.success() {
-        return Err(format!("Extract failed: {}", String::from_utf8_lossy(&extract.stderr)));
+        return Err(format!(
+            "Extract failed: {}",
+            String::from_utf8_lossy(&extract.stderr)
+        ));
     }
     let _ = std::fs::remove_file(&tmp_tar);
 
@@ -211,7 +232,8 @@ pub fn install_claude_platform() -> Result<(), String> {
 pub fn find_apt() -> Option<String> {
     let out = std::process::Command::new("which")
         .arg("apt-get")
-        .output().ok()?;
+        .output()
+        .ok()?;
     if out.status.success() {
         Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
@@ -225,7 +247,7 @@ pub fn find_apt() -> Option<String> {
 pub fn build_menu(
     app: &tauri::App,
 ) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
-    use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
     let file_submenu = SubmenuBuilder::new(app, "File")
         .item(&PredefinedMenuItem::close_window(app, None)?)
@@ -246,12 +268,9 @@ pub fn build_menu(
         .item(&PredefinedMenuItem::fullscreen(app, None)?)
         .build()?;
 
-    let help_item = MenuItemBuilder::with_id("open-help", "Operon Help")
-        .build(app)?;
+    let help_item = MenuItemBuilder::with_id("open-help", "Operon Help").build(app)?;
 
-    let help_submenu = SubmenuBuilder::new(app, "Help")
-        .item(&help_item)
-        .build()?;
+    let help_submenu = SubmenuBuilder::new(app, "Help").item(&help_item).build()?;
 
     let menu = MenuBuilder::new(app)
         .item(&file_submenu)

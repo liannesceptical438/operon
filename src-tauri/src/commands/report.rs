@@ -108,7 +108,9 @@ pub struct ReportConfig {
 
 // ── Constants ──
 
-const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tiff", "tif"];
+const IMAGE_EXTS: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "tiff", "tif",
+];
 const PDF_EXTS: &[&str] = &["pdf"];
 const CSV_EXTS: &[&str] = &["csv", "tsv"];
 const DOC_EXTS: &[&str] = &["md", "txt", "json", "html", "htm", "yaml", "yml", "toml"];
@@ -125,9 +127,22 @@ const MAX_SCAN_DEPTH: u32 = 8;
 
 /// Directories to always skip
 const SKIP_DIRS: &[&str] = &[
-    ".git", "node_modules", ".next", "__pycache__", ".cache",
-    "target", "dist", "build", ".operon", ".vscode", ".idea",
-    "venv", ".venv", "env", ".env", ".snakemake",
+    ".git",
+    "node_modules",
+    ".next",
+    "__pycache__",
+    ".cache",
+    "target",
+    "dist",
+    "build",
+    ".operon",
+    ".vscode",
+    ".idea",
+    "venv",
+    ".venv",
+    "env",
+    ".env",
+    ".snakemake",
 ];
 
 /// Directory name → heuristic hint mapping
@@ -137,7 +152,8 @@ fn dir_hint(name: &str) -> Option<&'static str> {
         "results" | "output" | "outputs" | "final" | "analysis" => Some("results"),
         "plots" | "figures" | "images" | "fig" | "figs" | "figure" => Some("plots"),
         "raw" | "raw_data" | "rawdata" | "fastq" | "bam" | "cram" => Some("raw"),
-        "tmp" | "temp" | "intermediate" | "scratch" | "bootstrap" | "logs" | "log" | "qc" | "qc_reports" => Some("intermediate"),
+        "tmp" | "temp" | "intermediate" | "scratch" | "bootstrap" | "logs" | "log" | "qc"
+        | "qc_reports" => Some("intermediate"),
         "scripts" | "src" | "code" | "bin" | "slurm" | "jobs" => Some("scripts"),
         "reference" | "ref" | "genome" | "annotation" | "db" | "database" => Some("reference"),
         _ => None,
@@ -212,7 +228,8 @@ fn scan_dir_recursive(
     depth: u32,
     show_hidden: bool,
 ) -> Result<ScanTreeNode, String> {
-    let dir_name = dir.file_name()
+    let dir_name = dir
+        .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| dir.to_string_lossy().to_string());
 
@@ -252,7 +269,8 @@ fn scan_dir_recursive(
             }
             dirs.push(path);
         } else if path.is_file() {
-            let ext = path.extension()
+            let ext = path
+                .extension()
                 .map(|e| e.to_string_lossy().to_lowercase())
                 .unwrap_or_default();
 
@@ -308,7 +326,8 @@ fn scan_dir_recursive(
                         let mut lines = content.lines();
                         if let Some(header) = lines.next() {
                             let sep = if ext == "tsv" { '\t' } else { ',' };
-                            let cols: Vec<String> = header.split(sep)
+                            let cols: Vec<String> = header
+                                .split(sep)
                                 .map(|s| s.trim().trim_matches('"').to_string())
                                 .collect();
                             scanned.columns = Some(cols);
@@ -337,7 +356,11 @@ fn scan_dir_recursive(
 
     // Compute totals
     node.total_file_count = node.files.len() as u64
-        + node.children.iter().map(|c| c.total_file_count).sum::<u64>();
+        + node
+            .children
+            .iter()
+            .map(|c| c.total_file_count)
+            .sum::<u64>();
     node.total_size = node.files.iter().map(|f| f.size).sum::<u64>()
         + node.children.iter().map(|c| c.total_size).sum::<u64>();
 
@@ -358,22 +381,39 @@ pub async fn extract_methods_info(path: String) -> Result<MethodsInfo, String> {
     // Files to scan for version info
     let version_files = [
         // Python
-        "requirements.txt", "setup.py", "setup.cfg", "pyproject.toml",
+        "requirements.txt",
+        "setup.py",
+        "setup.cfg",
+        "pyproject.toml",
         // R
-        "renv.lock", "DESCRIPTION", ".Rprofile",
+        "renv.lock",
+        "DESCRIPTION",
+        ".Rprofile",
         // Conda (parse for tool versions, not env details)
-        "environment.yml", "environment.yaml", "conda_env.yml",
+        "environment.yml",
+        "environment.yaml",
+        "conda_env.yml",
         // Nextflow / Snakemake
-        "nextflow.config", "Snakefile",
+        "nextflow.config",
+        "Snakefile",
         // Generic
-        "Makefile", "Dockerfile",
+        "Makefile",
+        "Dockerfile",
     ];
 
     for filename in &version_files {
         let fpath = root.join(filename);
         if fpath.exists() {
             if let Ok(content) = std::fs::read_to_string(&fpath) {
-                extract_versions_from_text(&content, filename, &mut tools, &mut evidence, &mut seen, &mut r_version, &mut python_version);
+                extract_versions_from_text(
+                    &content,
+                    filename,
+                    &mut tools,
+                    &mut evidence,
+                    &mut seen,
+                    &mut r_version,
+                    &mut python_version,
+                );
             }
         }
     }
@@ -386,12 +426,29 @@ pub async fn extract_methods_info(path: String) -> Result<MethodsInfo, String> {
             if let Ok(entries) = std::fs::read_dir(&dir) {
                 for entry in entries.flatten() {
                     let p = entry.path();
-                    if !p.is_file() { continue; }
-                    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                    if !p.is_file() {
+                        continue;
+                    }
+                    let ext = p
+                        .extension()
+                        .map(|e| e.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
                     if matches!(ext.as_str(), "r" | "rmd" | "py" | "sh" | "nf") {
                         if let Ok(content) = std::fs::read_to_string(&p) {
-                            let fname = p.file_name().unwrap_or_default().to_string_lossy().to_string();
-                            extract_versions_from_text(&content, &fname, &mut tools, &mut evidence, &mut seen, &mut r_version, &mut python_version);
+                            let fname = p
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string();
+                            extract_versions_from_text(
+                                &content,
+                                &fname,
+                                &mut tools,
+                                &mut evidence,
+                                &mut seen,
+                                &mut r_version,
+                                &mut python_version,
+                            );
                         }
                     }
                 }
@@ -431,7 +488,10 @@ fn extract_versions_from_text(
         if trimmed.contains("R version") {
             if let Some(pos) = trimmed.find("R version") {
                 let rest = &trimmed[pos + 10..];
-                let ver: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+                let ver: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
                 if !ver.is_empty() && r_version.is_none() {
                     *r_version = Some(ver);
                     evidence.push(format!("[{}] {}", source, trimmed));
@@ -440,7 +500,10 @@ fn extract_versions_from_text(
         }
 
         // Python version
-        if trimmed.contains("python_requires") || trimmed.contains("python-version") || trimmed.contains("Python ") {
+        if trimmed.contains("python_requires")
+            || trimmed.contains("python-version")
+            || trimmed.contains("Python ")
+        {
             let ver = extract_version_string(trimmed);
             if !ver.is_empty() && python_version.is_none() {
                 *python_version = Some(ver);
@@ -452,7 +515,7 @@ fn extract_versions_from_text(
         if source == "requirements.txt" || source.ends_with(".txt") {
             if let Some(idx) = trimmed.find("==") {
                 let pkg = trimmed[..idx].trim();
-                let ver = trimmed[idx+2..].trim();
+                let ver = trimmed[idx + 2..].trim();
                 if !pkg.is_empty() && !ver.is_empty() && !seen.contains(pkg) {
                     seen.insert(pkg.to_string());
                     tools.push(ToolEntry {
@@ -494,11 +557,12 @@ fn extract_versions_from_text(
         }
 
         // environment.yml: - tool=version
-        if (source.contains("environment") || source.contains("conda")) && trimmed.starts_with("- ") {
+        if (source.contains("environment") || source.contains("conda")) && trimmed.starts_with("- ")
+        {
             let pkg_str = trimmed.trim_start_matches("- ").trim();
             if let Some(idx) = pkg_str.find('=') {
                 let pkg = &pkg_str[..idx];
-                let rest = &pkg_str[idx+1..];
+                let rest = &pkg_str[idx + 1..];
                 let ver = rest.split('=').next().unwrap_or("").trim();
                 if !pkg.is_empty() && !ver.is_empty() && !seen.contains(pkg) {
                     // Skip conda/pip infrastructure entries
@@ -521,7 +585,11 @@ fn extract_versions_from_text(
 
         // library() calls in R scripts
         if trimmed.contains("library(") || trimmed.contains("require(") {
-            let start = if trimmed.contains("library(") { "library(" } else { "require(" };
+            let start = if trimmed.contains("library(") {
+                "library("
+            } else {
+                "require("
+            };
             if let Some(pos) = trimmed.find(start) {
                 let rest = &trimmed[pos + start.len()..];
                 if let Some(end) = rest.find(')') {
@@ -540,19 +608,62 @@ fn extract_versions_from_text(
         }
 
         // import statements in Python
-        if (trimmed.starts_with("import ") || trimmed.starts_with("from ")) && (source.ends_with(".py") || source.ends_with(".nf")) {
+        if (trimmed.starts_with("import ") || trimmed.starts_with("from "))
+            && (source.ends_with(".py") || source.ends_with(".nf"))
+        {
             let pkg = if trimmed.starts_with("from ") {
-                trimmed.strip_prefix("from ").unwrap_or("").split_whitespace().next().unwrap_or("")
-                    .split('.').next().unwrap_or("")
+                trimmed
+                    .strip_prefix("from ")
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .split('.')
+                    .next()
+                    .unwrap_or("")
             } else {
-                trimmed.strip_prefix("import ").unwrap_or("").split_whitespace().next().unwrap_or("")
-                    .split('.').next().unwrap_or("").split(',').next().unwrap_or("").trim()
+                trimmed
+                    .strip_prefix("import ")
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .split('.')
+                    .next()
+                    .unwrap_or("")
+                    .split(',')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
             };
             // Skip standard library modules
-            let stdlib = ["os", "sys", "re", "json", "csv", "math", "glob", "shutil",
-                         "pathlib", "subprocess", "argparse", "logging", "collections",
-                         "itertools", "functools", "typing", "datetime", "io", "copy",
-                         "warnings", "time", "hashlib", "tempfile", "textwrap", "string"];
+            let stdlib = [
+                "os",
+                "sys",
+                "re",
+                "json",
+                "csv",
+                "math",
+                "glob",
+                "shutil",
+                "pathlib",
+                "subprocess",
+                "argparse",
+                "logging",
+                "collections",
+                "itertools",
+                "functools",
+                "typing",
+                "datetime",
+                "io",
+                "copy",
+                "warnings",
+                "time",
+                "hashlib",
+                "tempfile",
+                "textwrap",
+                "string",
+            ];
             if !pkg.is_empty() && !seen.contains(pkg) && !stdlib.contains(&pkg) {
                 seen.insert(pkg.to_string());
                 tools.push(ToolEntry {
@@ -583,7 +694,12 @@ fn extract_version_string(s: &str) -> String {
 fn extract_json_value(s: &str) -> String {
     // Extract value from "Key": "value"
     if let Some(colon_pos) = s.find(':') {
-        let rest = s[colon_pos + 1..].trim().trim_matches('"').trim_matches(',').trim_matches('"').trim();
+        let rest = s[colon_pos + 1..]
+            .trim()
+            .trim_matches('"')
+            .trim_matches(',')
+            .trim_matches('"')
+            .trim();
         return rest.to_string();
     }
     String::new()
@@ -596,22 +712,32 @@ pub async fn read_csv_for_report(
     max_rows: Option<u32>,
 ) -> Result<(Vec<String>, Vec<Vec<String>>), String> {
     let max = max_rows.unwrap_or(50) as usize;
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Cannot read CSV {}: {}", path, e))?;
+    let content =
+        std::fs::read_to_string(&path).map_err(|e| format!("Cannot read CSV {}: {}", path, e))?;
 
-    let ext = Path::new(&path).extension()
+    let ext = Path::new(&path)
+        .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
     let sep = if ext == "tsv" { '\t' } else { ',' };
 
     let mut lines = content.lines();
-    let headers: Vec<String> = lines.next()
-        .map(|h| h.split(sep).map(|s| s.trim().trim_matches('"').to_string()).collect())
+    let headers: Vec<String> = lines
+        .next()
+        .map(|h| {
+            h.split(sep)
+                .map(|s| s.trim().trim_matches('"').to_string())
+                .collect()
+        })
         .unwrap_or_default();
 
     let rows: Vec<Vec<String>> = lines
         .take(max)
-        .map(|line| line.split(sep).map(|s| s.trim().trim_matches('"').to_string()).collect())
+        .map(|line| {
+            line.split(sep)
+                .map(|s| s.trim().trim_matches('"').to_string())
+                .collect()
+        })
         .collect();
 
     Ok((headers, rows))
@@ -620,9 +746,7 @@ pub async fn read_csv_for_report(
 /// Generate a report PDF using a Python subprocess with reportlab.
 /// Takes a JSON-serialized ReportConfig, writes the PDF, returns the output path.
 #[tauri::command]
-pub async fn generate_report_pdf(
-    config: ReportConfig,
-) -> Result<String, String> {
+pub async fn generate_report_pdf(config: ReportConfig) -> Result<String, String> {
     let output_path = PathBuf::from(&config.output_dir).join(&config.filename);
 
     // Serialize config to JSON
@@ -658,14 +782,22 @@ pub async fn generate_report_pdf(
 
         // Auto-install reportlab if that's what's missing.
         // Try multiple strategies: --user (macOS Homebrew), --break-system-packages (Linux), venv fallback.
-        if stderr.contains("No module named 'reportlab'") || stderr.contains("ModuleNotFoundError") {
+        if stderr.contains("No module named 'reportlab'") || stderr.contains("ModuleNotFoundError")
+        {
             eprintln!("[operon] reportlab not found, attempting auto-install...");
 
             let install_strategies: Vec<Vec<&str>> = vec![
                 // Strategy 1: --user install (works on macOS Homebrew Python)
                 vec!["-m", "pip", "install", "reportlab", "--user", "--quiet"],
                 // Strategy 2: --break-system-packages (works on some Linux distros)
-                vec!["-m", "pip", "install", "reportlab", "--quiet", "--break-system-packages"],
+                vec![
+                    "-m",
+                    "pip",
+                    "install",
+                    "reportlab",
+                    "--quiet",
+                    "--break-system-packages",
+                ],
                 // Strategy 3: pip3 directly with --user
                 // (handled below as a separate command if python3 -m pip fails)
             ];
@@ -673,9 +805,7 @@ pub async fn generate_report_pdf(
             let mut installed = false;
             for strategy in &install_strategies {
                 eprintln!("[operon] Trying: {} {}", python, strategy.join(" "));
-                let install = std::process::Command::new(python)
-                    .args(strategy)
-                    .output();
+                let install = std::process::Command::new(python).args(strategy).output();
                 if let Ok(install_out) = install {
                     if install_out.status.success() {
                         installed = true;
@@ -683,14 +813,24 @@ pub async fn generate_report_pdf(
                         break;
                     }
                     let install_err = String::from_utf8_lossy(&install_out.stderr);
-                    eprintln!("[operon] Install strategy failed: {}", install_err.chars().take(200).collect::<String>());
+                    eprintln!(
+                        "[operon] Install strategy failed: {}",
+                        install_err.chars().take(200).collect::<String>()
+                    );
                 }
             }
 
             // Fallback: try pip/pip3 directly (some systems have pip3 but not python3 -m pip)
             if !installed {
-                let pip_cmd = if cfg!(target_os = "windows") { "pip" } else { "pip3" };
-                eprintln!("[operon] Trying: {} install reportlab --user --quiet", pip_cmd);
+                let pip_cmd = if cfg!(target_os = "windows") {
+                    "pip"
+                } else {
+                    "pip3"
+                };
+                eprintln!(
+                    "[operon] Trying: {} install reportlab --user --quiet",
+                    pip_cmd
+                );
                 if let Ok(pip_out) = std::process::Command::new(pip_cmd)
                     .args(["install", "reportlab", "--user", "--quiet"])
                     .output()
@@ -719,7 +859,10 @@ pub async fn generate_report_pdf(
                     return Ok(output_path.to_string_lossy().to_string());
                 }
                 let retry_stderr = String::from_utf8_lossy(&retry.stderr);
-                return Err(format!("Report generation failed after installing reportlab: {}", retry_stderr));
+                return Err(format!(
+                    "Report generation failed after installing reportlab: {}",
+                    retry_stderr
+                ));
             }
         }
 
@@ -743,7 +886,9 @@ pub async fn scan_remote_project_files(
     // Use SSH to list files and build the scan tree
     let profile = {
         let profiles = ssh_state.profiles.lock().map_err(|e| e.to_string())?;
-        profiles.iter().find(|p| p.id == profile_id)
+        profiles
+            .iter()
+            .find(|p| p.id == profile_id)
             .ok_or(format!("SSH profile '{}' not found", profile_id))?
             .clone()
     };
@@ -775,10 +920,17 @@ pub async fn scan_remote_project_files(
         d = MAX_SCAN_DEPTH
     );
 
-    eprintln!("[operon] Remote scan command (first 300 chars): {}", &find_cmd[..find_cmd.len().min(300)]);
-    let output = super::ssh::ssh_exec(&profile, &find_cmd)
-        .map_err(|e| format!("SSH scan failed: {}", e))?;
-    eprintln!("[operon] Remote scan output: {} bytes, {} lines", output.len(), output.lines().count());
+    eprintln!(
+        "[operon] Remote scan command (first 300 chars): {}",
+        &find_cmd[..find_cmd.len().min(300)]
+    );
+    let output =
+        super::ssh::ssh_exec(&profile, &find_cmd).map_err(|e| format!("SSH scan failed: {}", e))?;
+    eprintln!(
+        "[operon] Remote scan output: {} bytes, {} lines",
+        output.len(),
+        output.lines().count()
+    );
 
     // If -printf produced no output, fall back to find without sizes (use 0 for all sizes).
     // This handles systems where GNU find -printf is not available.
@@ -802,9 +954,14 @@ pub async fn scan_remote_project_files(
         );
         let fallback_output = super::ssh::ssh_exec(&profile, &fallback_cmd)
             .map_err(|e| format!("SSH scan fallback failed: {}", e))?;
-        eprintln!("[operon] Fallback scan output: {} bytes, {} lines", fallback_output.len(), fallback_output.lines().count());
+        eprintln!(
+            "[operon] Fallback scan output: {} bytes, {} lines",
+            fallback_output.len(),
+            fallback_output.lines().count()
+        );
         // Convert plain paths to tab-delimited format with size=0
-        fallback_output.lines()
+        fallback_output
+            .lines()
             .filter(|l| !l.trim().is_empty())
             .map(|l| format!("0\t{}", l))
             .collect::<Vec<_>>()
@@ -819,13 +976,24 @@ pub async fn scan_remote_project_files(
 
     for line in output.lines() {
         let parts: Vec<&str> = line.splitn(2, '\t').collect();
-        if parts.len() != 2 { continue; }
+        if parts.len() != 2 {
+            continue;
+        }
         let size: u64 = parts[0].parse().unwrap_or(0);
         let file_path = parts[1];
         let fp = PathBuf::from(file_path);
-        let name = fp.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let dir = fp.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-        let ext = fp.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let name = fp
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let dir = fp
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let ext = fp
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
 
         // Skip log files
         let name_lower = name.to_lowercase();
@@ -841,13 +1009,19 @@ pub async fn scan_remote_project_files(
         } else if IMAGE_EXTS.contains(&ext.as_str()) {
             "image"
         } else if CSV_EXTS.contains(&ext.as_str()) {
-            if size > MAX_CSV_SIZE { continue; }
+            if size > MAX_CSV_SIZE {
+                continue;
+            }
             "csv"
         } else if DOC_EXTS.contains(&ext.as_str()) {
-            if size > MAX_DOC_SIZE { continue; }
+            if size > MAX_DOC_SIZE {
+                continue;
+            }
             "doc"
         } else if CODE_EXTS.contains(&ext.as_str()) {
-            if size > MAX_DOC_SIZE { continue; }
+            if size > MAX_DOC_SIZE {
+                continue;
+            }
             "code"
         } else {
             continue;
@@ -879,7 +1053,10 @@ pub async fn scan_remote_project_files(
     })
 }
 
-fn build_tree_from_flat(root_path: &str, files_by_dir: &HashMap<String, Vec<ScannedFile>>) -> ScanTreeNode {
+fn build_tree_from_flat(
+    root_path: &str,
+    files_by_dir: &HashMap<String, Vec<ScannedFile>>,
+) -> ScanTreeNode {
     let root_name = PathBuf::from(root_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -897,7 +1074,8 @@ fn build_tree_from_flat(root_path: &str, files_by_dir: &HashMap<String, Vec<Scan
     };
 
     // Collect all unique directory paths that are under root
-    let mut all_dirs: Vec<String> = files_by_dir.keys()
+    let mut all_dirs: Vec<String> = files_by_dir
+        .keys()
         .filter(|d| d.as_str() != root_path && d.starts_with(root_path))
         .cloned()
         .collect();
@@ -908,9 +1086,15 @@ fn build_tree_from_flat(root_path: &str, files_by_dir: &HashMap<String, Vec<Scan
     let mut child_dirs_map: HashMap<String, Vec<String>> = HashMap::new();
 
     for dir_path in &all_dirs {
-        let relative = dir_path.strip_prefix(root_path).unwrap_or(dir_path).trim_start_matches('/');
+        let relative = dir_path
+            .strip_prefix(root_path)
+            .unwrap_or(dir_path)
+            .trim_start_matches('/');
         let first_part = relative.split('/').next().unwrap_or(relative);
-        child_dirs_map.entry(first_part.to_string()).or_default().push(dir_path.clone());
+        child_dirs_map
+            .entry(first_part.to_string())
+            .or_default()
+            .push(dir_path.clone());
     }
 
     // For each immediate child directory, recursively build a subtree
@@ -920,7 +1104,9 @@ fn build_tree_from_flat(root_path: &str, files_by_dir: &HashMap<String, Vec<Scan
         let child_node = build_tree_from_flat(&child_path, files_by_dir);
         // Apply directory hint based on the child name
         let child_with_hint = ScanTreeNode {
-            hint: dir_hint(child_name).map(|s| s.to_string()).or(child_node.hint),
+            hint: dir_hint(child_name)
+                .map(|s| s.to_string())
+                .or(child_node.hint),
             ..child_node
         };
         root.children.push(child_with_hint);
@@ -932,7 +1118,9 @@ fn build_tree_from_flat(root_path: &str, files_by_dir: &HashMap<String, Vec<Scan
     fn sum_files(node: &ScanTreeNode) -> (u64, u64) {
         let own_count = node.files.len() as u64;
         let own_size: u64 = node.files.iter().map(|f| f.size).sum();
-        let (child_count, child_size): (u64, u64) = node.children.iter()
+        let (child_count, child_size): (u64, u64) = node
+            .children
+            .iter()
             .map(|c| sum_files(c))
             .fold((0, 0), |(ac, as_), (cc, cs)| (ac + cc, as_ + cs));
         (own_count + child_count, own_size + child_size)
@@ -964,22 +1152,21 @@ pub struct FilePreview {
 /// Returns truncated text content for text-based files (CSV, TSV, MD, TXT, JSON, R, PY, etc.).
 /// Skips binary files (PDF, images).
 #[tauri::command]
-pub async fn batch_read_file_previews(
-    paths: Vec<String>,
-) -> Result<Vec<FilePreview>, String> {
+pub async fn batch_read_file_previews(paths: Vec<String>) -> Result<Vec<FilePreview>, String> {
     let text_exts: &[&str] = &[
-        "csv", "tsv", "md", "txt", "json", "html", "htm",
-        "yaml", "yml", "toml",
-        "r", "rmd", "py", "ipynb", "sh", "bash", "nf", "smk", "wdl",
+        "csv", "tsv", "md", "txt", "json", "html", "htm", "yaml", "yml", "toml", "r", "rmd", "py",
+        "ipynb", "sh", "bash", "nf", "smk", "wdl",
     ];
 
     let mut results = Vec::new();
     for file_path in &paths {
         let fp = PathBuf::from(file_path);
-        let name = fp.file_name()
+        let name = fp
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| file_path.clone());
-        let ext = fp.extension()
+        let ext = fp
+            .extension()
             .map(|e| e.to_string_lossy().to_lowercase())
             .unwrap_or_default();
 
@@ -1043,25 +1230,28 @@ pub async fn batch_read_remote_file_previews(
 ) -> Result<Vec<FilePreview>, String> {
     let profile = {
         let profiles = ssh_state.profiles.lock().map_err(|e| e.to_string())?;
-        profiles.iter().find(|p| p.id == profile_id)
+        profiles
+            .iter()
+            .find(|p| p.id == profile_id)
             .ok_or(format!("SSH profile '{}' not found", profile_id))?
             .clone()
     };
 
     let text_exts: &[&str] = &[
-        "csv", "tsv", "md", "txt", "json", "html", "htm",
-        "yaml", "yml", "toml",
-        "r", "rmd", "py", "ipynb", "sh", "bash", "nf", "smk", "wdl",
+        "csv", "tsv", "md", "txt", "json", "html", "htm", "yaml", "yml", "toml", "r", "rmd", "py",
+        "ipynb", "sh", "bash", "nf", "smk", "wdl",
     ];
 
     let mut results = Vec::new();
 
     for file_path in &paths {
         let fp = PathBuf::from(file_path);
-        let name = fp.file_name()
+        let name = fp
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| file_path.clone());
-        let ext = fp.extension()
+        let ext = fp
+            .extension()
             .map(|e| e.to_string_lossy().to_lowercase())
             .unwrap_or_default();
 
@@ -1079,10 +1269,14 @@ pub async fn batch_read_remote_file_previews(
 
         // Read file via SSH: head -N to limit lines, then truncate bytes
         let escaped = file_path.replace('\'', "'\\''");
-        let cmd = format!("head -n {} '{}' 2>/dev/null | head -c {}", MAX_PREVIEW_LINES, escaped, MAX_PREVIEW_BYTES);
+        let cmd = format!(
+            "head -n {} '{}' 2>/dev/null | head -c {}",
+            MAX_PREVIEW_LINES, escaped, MAX_PREVIEW_BYTES
+        );
         match super::ssh::ssh_exec(&profile, &cmd) {
             Ok(output) => {
-                let truncated = output.lines().count() >= MAX_PREVIEW_LINES || output.len() >= MAX_PREVIEW_BYTES;
+                let truncated = output.lines().count() >= MAX_PREVIEW_LINES
+                    || output.len() >= MAX_PREVIEW_BYTES;
                 results.push(FilePreview {
                     path: file_path.clone(),
                     name,

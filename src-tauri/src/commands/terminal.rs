@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtySize, MasterPty, Child};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -107,20 +107,14 @@ pub async fn spawn_terminal(
                 Ok(0) => break, // EOF
                 Ok(n) => {
                     let output = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = app_handle.emit(
-                        &event_name,
-                        serde_json::json!({ "output": output }),
-                    );
+                    let _ = app_handle.emit(&event_name, serde_json::json!({ "output": output }));
                 }
                 Err(_) => break,
             }
         }
 
         // Process exited — notify frontend
-        let _ = app_handle.emit(
-            &format!("pty-exit-{}", tid),
-            serde_json::json!({}),
-        );
+        let _ = app_handle.emit(&format!("pty-exit-{}", tid), serde_json::json!({}));
     });
 
     Ok(())

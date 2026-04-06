@@ -93,7 +93,8 @@ fn save_profiles_to_disk(profiles: &[SSHProfile]) -> Result<(), String> {
 /// Returns the ControlMaster socket path for a given profile.
 fn control_socket_path(profile: &SSHProfile) -> String {
     crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user)
-        .to_string_lossy().to_string()
+        .to_string_lossy()
+        .to_string()
 }
 
 /// Check if a ControlMaster socket is active for this profile.
@@ -148,10 +149,13 @@ impl SshCache {
     /// Store a directory listing in the cache.
     fn put_dir(&self, key: String, value: Vec<FileEntry>) {
         if let Ok(mut cache) = self.dir_listings.lock() {
-            cache.insert(key, CacheEntry {
-                value,
-                expires: std::time::Instant::now() + self.ttl,
-            });
+            cache.insert(
+                key,
+                CacheEntry {
+                    value,
+                    expires: std::time::Instant::now() + self.ttl,
+                },
+            );
         }
     }
 
@@ -171,10 +175,13 @@ impl SshCache {
         if let Ok(mut cache) = self.file_contents.lock() {
             // Only cache files under 1MB to avoid memory bloat
             if value.len() < 1_048_576 {
-                cache.insert(key, CacheEntry {
-                    value,
-                    expires: std::time::Instant::now() + self.ttl,
-                });
+                cache.insert(
+                    key,
+                    CacheEntry {
+                        value,
+                        expires: std::time::Instant::now() + self.ttl,
+                    },
+                );
             }
         }
     }
@@ -196,7 +203,8 @@ impl SshCache {
     /// More targeted than invalidate_profile — used after single-file writes.
     pub fn invalidate_path(&self, profile_id: &str, path: &str) {
         let dir_key = format!("{}:{}", profile_id, path);
-        let parent = std::path::Path::new(path).parent()
+        let parent = std::path::Path::new(path)
+            .parent()
             .map(|p| format!("{}:{}", profile_id, p.display()))
             .unwrap_or_default();
         let file_key = format!("{}:{}", profile_id, path);
@@ -317,8 +325,8 @@ pub async fn spawn_ssh_terminal(
     terminal_id: String,
     profile_id: String,
 ) -> Result<(), String> {
-    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
     use crate::commands::terminal::TerminalHandle;
+    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
     use std::io::Read;
     use std::sync::Arc;
 
@@ -406,19 +414,13 @@ pub async fn spawn_ssh_terminal(
                 Ok(0) => break,
                 Ok(n) => {
                     let output = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = app_handle.emit(
-                        &event_name,
-                        serde_json::json!({ "output": output }),
-                    );
+                    let _ = app_handle.emit(&event_name, serde_json::json!({ "output": output }));
                 }
                 Err(_) => break,
             }
         }
 
-        let _ = app_handle.emit(
-            &format!("pty-exit-{}", tid),
-            serde_json::json!({}),
-        );
+        let _ = app_handle.emit(&format!("pty-exit-{}", tid), serde_json::json!({}));
     });
 
     Ok(())
@@ -484,9 +486,10 @@ pub(crate) fn ssh_exec(profile: &SSHProfile, remote_cmd: &str) -> Result<String,
 
     if !output.status.success() && stdout.trim().is_empty() {
         // On Windows without ControlMaster, provide actionable guidance
-        if !has_mux && (stderr.contains("Permission denied")
-            || stderr.contains("publickey")
-            || stderr.contains("no more authentication methods"))
+        if !has_mux
+            && (stderr.contains("Permission denied")
+                || stderr.contains("publickey")
+                || stderr.contains("no more authentication methods"))
         {
             return Err(
                 "SSH key authentication failed. On Windows, Operon requires SSH keys \
@@ -563,8 +566,10 @@ pub async fn list_remote_directory(
     let la_flag = if show_hidden { "-laL" } else { "-lL" };
     let cmd = format!(
         "ls {} {} 2>/dev/null && echo '---SEPARATOR---' && ls {} {} 2>/dev/null",
-        ls_flag, shell_escape_inner(&path),
-        la_flag, shell_escape_inner(&path)
+        ls_flag,
+        shell_escape_inner(&path),
+        la_flag,
+        shell_escape_inner(&path)
     );
 
     let output = ssh_exec(&profile, &cmd)?;
@@ -597,7 +602,8 @@ pub async fn list_remote_directory(
             continue;
         }
 
-        let clean = line.trim_end_matches(|c| c == '/' || c == '*' || c == '@' || c == '=' || c == '|');
+        let clean =
+            line.trim_end_matches(|c| c == '/' || c == '*' || c == '@' || c == '=' || c == '|');
         if clean == "." || clean == ".." {
             continue;
         }
@@ -626,7 +632,9 @@ pub async fn list_remote_directory(
     }
 
     entries.sort_by(|a, b| {
-        b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
 
     // Store in cache for subsequent requests
@@ -779,8 +787,10 @@ pub async fn scp_to_remote(
 
     let host_str = format!("{}@{}", profile.user, profile.host);
     let mut scp_args: Vec<String> = vec![
-        "-o".to_string(), "BatchMode=yes".to_string(),
-        "-o".to_string(), "ConnectTimeout=10".to_string(),
+        "-o".to_string(),
+        "BatchMode=yes".to_string(),
+        "-o".to_string(),
+        "ConnectTimeout=10".to_string(),
     ];
     // On Windows (no ControlMaster), restrict to publickey auth to avoid Duo hang
     if !crate::platform::supports_ssh_mux() {
@@ -849,8 +859,10 @@ pub async fn scp_from_remote(
 
     let host_str = format!("{}@{}", profile.user, profile.host);
     let mut scp_args: Vec<String> = vec![
-        "-o".to_string(), "BatchMode=yes".to_string(),
-        "-o".to_string(), "ConnectTimeout=10".to_string(),
+        "-o".to_string(),
+        "BatchMode=yes".to_string(),
+        "-o".to_string(),
+        "ConnectTimeout=10".to_string(),
     ];
     if !crate::platform::supports_ssh_mux() {
         scp_args.push("-o".to_string());
@@ -915,8 +927,10 @@ pub async fn scp_dir_from_remote(
     let host_str = format!("{}@{}", profile.user, profile.host);
     let mut scp_args: Vec<String> = vec![
         "-r".to_string(),
-        "-o".to_string(), "BatchMode=yes".to_string(),
-        "-o".to_string(), "ConnectTimeout=10".to_string(),
+        "-o".to_string(),
+        "BatchMode=yes".to_string(),
+        "-o".to_string(),
+        "ConnectTimeout=10".to_string(),
     ];
     if !crate::platform::supports_ssh_mux() {
         scp_args.push("-o".to_string());
@@ -988,8 +1002,10 @@ pub async fn scp_batch_upload(
 
     // Build base SCP args once
     let mut base_args: Vec<String> = vec![
-        "-o".to_string(), "BatchMode=yes".to_string(),
-        "-o".to_string(), "ConnectTimeout=10".to_string(),
+        "-o".to_string(),
+        "BatchMode=yes".to_string(),
+        "-o".to_string(),
+        "ConnectTimeout=10".to_string(),
     ];
     if !crate::platform::supports_ssh_mux() {
         base_args.push("-o".to_string());
@@ -1014,7 +1030,8 @@ pub async fn scp_batch_upload(
 
     for local_path in &local_paths {
         let local = std::path::Path::new(local_path);
-        let file_name = local.file_name()
+        let file_name = local
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "file".to_string());
 
@@ -1045,12 +1062,15 @@ pub async fn scp_batch_upload(
         }
 
         // Emit progress event
-        let _ = app.emit("scp-transfer-progress", serde_json::json!({
-            "completed": completed,
-            "total": total,
-            "current_file": file_name,
-            "errors": errors.len(),
-        }));
+        let _ = app.emit(
+            "scp-transfer-progress",
+            serde_json::json!({
+                "completed": completed,
+                "total": total,
+                "current_file": file_name,
+                "errors": errors.len(),
+            }),
+        );
     }
 
     if !errors.is_empty() && completed == 0 {
@@ -1066,9 +1086,7 @@ pub async fn scp_batch_upload(
 /// Clear the SSH remote file/directory cache.
 /// Called by the UI refresh button to force fresh data on next load.
 #[tauri::command]
-pub async fn clear_ssh_cache(
-    state: tauri::State<'_, SSHManager>,
-) -> Result<(), String> {
+pub async fn clear_ssh_cache(state: tauri::State<'_, SSHManager>) -> Result<(), String> {
     state.cache.clear_all();
     Ok(())
 }
@@ -1086,7 +1104,7 @@ pub async fn clear_ssh_cache(
 /// Progress events emitted during key setup so the frontend can show status.
 #[derive(Debug, Clone, Serialize)]
 pub struct KeySetupProgress {
-    pub stage: String,   // "connecting", "password", "mfa_waiting", "installing", "verifying", "done", "error"
+    pub stage: String, // "connecting", "password", "mfa_waiting", "installing", "verifying", "done", "error"
     pub message: String,
 }
 
@@ -1131,7 +1149,8 @@ pub async fn setup_ssh_key(
     let home = crate::platform::home_dir().ok_or("Could not determine home directory")?;
     let ssh_dir = home.join(".ssh");
     if !ssh_dir.exists() {
-        std::fs::create_dir_all(&ssh_dir).map_err(|e| format!("Failed to create .ssh dir: {}", e))?;
+        std::fs::create_dir_all(&ssh_dir)
+            .map_err(|e| format!("Failed to create .ssh dir: {}", e))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -1148,10 +1167,14 @@ pub async fn setup_ssh_key(
     if !private_key_path.exists() {
         let output = std::process::Command::new("ssh-keygen")
             .args([
-                "-t", "ed25519",
-                "-f", &private_key_path.to_string_lossy(),
-                "-N", "",
-                "-C", &format!("operon@{}", profile.host),
+                "-t",
+                "ed25519",
+                "-f",
+                &private_key_path.to_string_lossy(),
+                "-N",
+                "",
+                "-C",
+                &format!("operon@{}", profile.host),
             ])
             .output()
             .map_err(|e| format!("Failed to run ssh-keygen: {}", e))?;
@@ -1173,10 +1196,19 @@ pub async fn setup_ssh_key(
     };
 
     // 2. Connect via PTY-based SSH and handle password + MFA
-    emit_progress(&app, "connecting", &format!("Connecting to {}...", profile.host));
+    emit_progress(
+        &app,
+        "connecting",
+        &format!("Connecting to {}...", profile.host),
+    );
 
     let pty_system = native_pty_system();
-    let size = PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 };
+    let size = PtySize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 0,
+        pixel_height: 0,
+    };
     let pair = pty_system.openpty(size).map_err(|e| e.to_string())?;
 
     // Build SSH command that will install the key after login
@@ -1191,7 +1223,10 @@ pub async fn setup_ssh_key(
 
     let ssh_cmd = format!(
         "ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -p {} {}@{} {}",
-        profile.port, profile.user, profile.host, shell_escape(&install_script)
+        profile.port,
+        profile.user,
+        profile.host,
+        shell_escape(&install_script)
     );
 
     let shell = crate::platform::default_shell();
@@ -1217,10 +1252,10 @@ pub async fn setup_ssh_key(
     // 3. State machine: read PTY output and respond to prompts
     #[derive(Debug, PartialEq)]
     enum State {
-        WaitingForPrompt,    // Waiting for password or any prompt
-        WaitingForDuo,       // Password was sent, looking for Duo prompt
-        WaitingForApproval,  // Duo push sent, waiting for approval
-        WaitingForResult,    // Authenticated, waiting for key install confirmation
+        WaitingForPrompt,   // Waiting for password or any prompt
+        WaitingForDuo,      // Password was sent, looking for Duo prompt
+        WaitingForApproval, // Duo push sent, waiting for approval
+        WaitingForResult,   // Authenticated, waiting for key install confirmation
         Done,
         Failed,
     }
@@ -1237,12 +1272,18 @@ pub async fn setup_ssh_key(
     // (portable-pty doesn't support non-blocking reads directly, so we use
     //  a thread with a channel)
     let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    let reader_thread = std::thread::spawn(move || {
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) => { let _ = tx.send(Vec::new()); break; }
-                Ok(n) => { let _ = tx.send(buf[..n].to_vec()); }
-                Err(_) => { let _ = tx.send(Vec::new()); break; }
+    let reader_thread = std::thread::spawn(move || loop {
+        match reader.read(&mut buf) {
+            Ok(0) => {
+                let _ = tx.send(Vec::new());
+                break;
+            }
+            Ok(n) => {
+                let _ = tx.send(buf[..n].to_vec());
+            }
+            Err(_) => {
+                let _ = tx.send(Vec::new());
+                break;
             }
         }
     });
@@ -1276,14 +1317,14 @@ pub async fn setup_ssh_key(
                 match state_machine {
                     State::WaitingForPrompt => {
                         // Look for password prompt
-                        if !password_sent && (
-                            lower.contains("password:") ||
+                        if !password_sent
+                            && (lower.contains("password:") ||
                             lower.contains("password for") ||
                             lower.ends_with("'s password: ") ||
                             // keyboard-interactive prompt
                             lower.contains("(current) password") ||
-                            lower.contains("verification code")
-                        ) {
+                            lower.contains("verification code"))
+                        {
                             emit_progress(&app, "password", "Sending password...");
                             let _ = writer.write_all(format!("{}\n", password).as_bytes());
                             let _ = writer.flush();
@@ -1298,7 +1339,10 @@ pub async fn setup_ssh_key(
                             return Err("Permission denied — check your password".to_string());
                         }
                         // Connection refused / timeout
-                        if lower.contains("connection refused") || lower.contains("no route to host") || lower.contains("connection timed out") {
+                        if lower.contains("connection refused")
+                            || lower.contains("no route to host")
+                            || lower.contains("connection timed out")
+                        {
                             cleanup_keys(&private_key_path, &public_key_path);
                             let msg = format!("Could not connect to {}", profile.host);
                             emit_progress(&app, "error", &msg);
@@ -1307,13 +1351,13 @@ pub async fn setup_ssh_key(
                     }
                     State::WaitingForDuo => {
                         // Check for Duo MFA prompt
-                        if !duo_responded && (
-                            lower.contains("duo two-factor") ||
-                            lower.contains("duo login") ||
-                            lower.contains("passcode or option") ||
-                            lower.contains("1. duo push") ||
-                            lower.contains("enter a passcode")
-                        ) {
+                        if !duo_responded
+                            && (lower.contains("duo two-factor")
+                                || lower.contains("duo login")
+                                || lower.contains("passcode or option")
+                                || lower.contains("1. duo push")
+                                || lower.contains("enter a passcode"))
+                        {
                             // Duo detected! Respond based on preferred method
                             let mfa_response = match mfa_method.as_deref() {
                                 Some("phone") | Some("2") => "2",
@@ -1322,7 +1366,10 @@ pub async fn setup_ssh_key(
                                     // The user should pass the actual passcode as mfa_method
                                     "1" // fallback to push
                                 }
-                                Some(code) if code.chars().all(|c| c.is_ascii_digit()) && code.len() >= 6 => {
+                                Some(code)
+                                    if code.chars().all(|c| c.is_ascii_digit())
+                                        && code.len() >= 6 =>
+                                {
                                     // User passed an actual passcode
                                     code
                                 }
@@ -1330,9 +1377,17 @@ pub async fn setup_ssh_key(
                             };
 
                             if mfa_response == "1" {
-                                emit_progress(&app, "mfa_waiting", "Duo push sent — approve on your phone...");
+                                emit_progress(
+                                    &app,
+                                    "mfa_waiting",
+                                    "Duo push sent — approve on your phone...",
+                                );
                             } else if mfa_response == "2" {
-                                emit_progress(&app, "mfa_waiting", "Calling your phone for Duo approval...");
+                                emit_progress(
+                                    &app,
+                                    "mfa_waiting",
+                                    "Calling your phone for Duo approval...",
+                                );
                             } else {
                                 emit_progress(&app, "mfa_waiting", "Sending Duo passcode...");
                             }
@@ -1348,30 +1403,49 @@ pub async fn setup_ssh_key(
                             state_machine = State::Done;
                         }
                         // Or we got another password prompt (wrong password)
-                        else if lower.contains("permission denied") || (password_sent && lower.contains("password:")) {
+                        else if lower.contains("permission denied")
+                            || (password_sent && lower.contains("password:"))
+                        {
                             cleanup_keys(&private_key_path, &public_key_path);
                             emit_progress(&app, "error", "Authentication failed — wrong password");
-                            return Err("Authentication failed — wrong password or MFA rejected".to_string());
+                            return Err("Authentication failed — wrong password or MFA rejected"
+                                .to_string());
                         }
                         // Might already be logged in (fast password-only servers)
                         else if lower.contains("last login") || lower.contains("welcome") {
-                            emit_progress(&app, "installing", "Authenticated. Installing SSH key...");
+                            emit_progress(
+                                &app,
+                                "installing",
+                                "Authenticated. Installing SSH key...",
+                            );
                             state_machine = State::WaitingForResult;
                         }
                     }
                     State::WaitingForApproval => {
-                        if lower.contains("success") || lower.contains("operon_key_installed_ok") || lower.contains("last login") {
+                        if lower.contains("success")
+                            || lower.contains("operon_key_installed_ok")
+                            || lower.contains("last login")
+                        {
                             if lower.contains("operon_key_installed_ok") {
                                 state_machine = State::Done;
                             } else {
-                                emit_progress(&app, "installing", "MFA approved. Installing SSH key...");
+                                emit_progress(
+                                    &app,
+                                    "installing",
+                                    "MFA approved. Installing SSH key...",
+                                );
                                 state_machine = State::WaitingForResult;
                             }
                         }
-                        if lower.contains("denied") || lower.contains("timed out") || lower.contains("error") {
+                        if lower.contains("denied")
+                            || lower.contains("timed out")
+                            || lower.contains("error")
+                        {
                             cleanup_keys(&private_key_path, &public_key_path);
                             emit_progress(&app, "error", "Duo authentication denied or timed out");
-                            return Err("Duo MFA denied or timed out. Please try again.".to_string());
+                            return Err(
+                                "Duo MFA denied or timed out. Please try again.".to_string()
+                            );
                         }
                     }
                     State::WaitingForResult => {
@@ -1433,7 +1507,11 @@ pub async fn setup_ssh_key(
         // Don't delete the keys (they're installed remotely), but warn the user.
         // We'll set use_control_master = true as the fallback strategy.
         eprintln!("[SSH] Key verification failed — server may require MFA on every connection. Enabling ControlMaster fallback.");
-        emit_progress(&app, "done", "Key installed, but server still requires MFA. ControlMaster will keep sessions alive.");
+        emit_progress(
+            &app,
+            "done",
+            "Key installed, but server still requires MFA. ControlMaster will keep sessions alive.",
+        );
 
         let key_path_str = private_key_path.to_string_lossy().to_string();
         {
@@ -1449,7 +1527,11 @@ pub async fn setup_ssh_key(
     }
 
     // Key works without MFA — full success!
-    emit_progress(&app, "done", "SSH key installed and verified! No more passwords or MFA needed.");
+    emit_progress(
+        &app,
+        "done",
+        "SSH key installed and verified! No more passwords or MFA needed.",
+    );
 
     let key_path_str = private_key_path.to_string_lossy().to_string();
     {
@@ -1624,7 +1706,11 @@ echo "work_dir=$HOME"
         }
     }
 
-    eprintln!("[ServerConfig] Detected {} settings for {}", config.len(), profile.name);
+    eprintln!(
+        "[ServerConfig] Detected {} settings for {}",
+        config.len(),
+        profile.name
+    );
     Ok(config)
 }
 

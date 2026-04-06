@@ -4,13 +4,13 @@
 //! `#[cfg(target_os = ...)]`, `osascript`, `/bin/zsh`, `cmd.exe`, or
 //! any OS-specific path. They call functions from this module instead.
 
+pub mod common;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
-#[cfg(target_os = "linux")]
-mod linux;
-pub mod common;
 
 pub use common::*;
 
@@ -26,21 +26,33 @@ pub use common::*;
 /// Never construct a Command::new("/bin/zsh") directly.
 pub fn shell_exec(command: &str) -> std::process::Command {
     #[cfg(target_os = "macos")]
-    { macos::shell_exec(command) }
+    {
+        macos::shell_exec(command)
+    }
     #[cfg(target_os = "windows")]
-    { windows::shell_exec(command) }
+    {
+        windows::shell_exec(command)
+    }
     #[cfg(target_os = "linux")]
-    { linux::shell_exec(command) }
+    {
+        linux::shell_exec(command)
+    }
 }
 
 /// Async version for use in async Tauri commands.
 pub fn shell_exec_async(command: &str) -> tokio::process::Command {
     #[cfg(target_os = "macos")]
-    { macos::shell_exec_async(command) }
+    {
+        macos::shell_exec_async(command)
+    }
     #[cfg(target_os = "windows")]
-    { windows::shell_exec_async(command) }
+    {
+        windows::shell_exec_async(command)
+    }
     #[cfg(target_os = "linux")]
-    { linux::shell_exec_async(command) }
+    {
+        linux::shell_exec_async(command)
+    }
 }
 
 /// The default interactive shell for terminal spawning.
@@ -50,11 +62,17 @@ pub fn shell_exec_async(command: &str) -> tokio::process::Command {
 /// Linux:   $SHELL or /bin/bash
 pub fn default_shell() -> String {
     #[cfg(target_os = "macos")]
-    { macos::default_shell() }
+    {
+        macos::default_shell()
+    }
     #[cfg(target_os = "windows")]
-    { windows::default_shell() }
+    {
+        windows::default_shell()
+    }
     #[cfg(target_os = "linux")]
-    { linux::default_shell() }
+    {
+        linux::default_shell()
+    }
 }
 
 // ─── Directories ─────────────────────────────────────────────────
@@ -127,11 +145,17 @@ pub fn operon_node_dir() -> std::path::PathBuf {
 /// Windows:     `where.exe {name}` then `{name} --version`
 pub fn check_tool(name: &str) -> Option<(String, String)> {
     #[cfg(target_os = "macos")]
-    { macos::check_tool(name) }
+    {
+        macos::check_tool(name)
+    }
     #[cfg(target_os = "windows")]
-    { windows::check_tool(name) }
+    {
+        windows::check_tool(name)
+    }
     #[cfg(target_os = "linux")]
-    { linux::check_tool(name) }
+    {
+        linux::check_tool(name)
+    }
 }
 
 /// Additional directories to search for tools beyond $PATH.
@@ -141,11 +165,17 @@ pub fn check_tool(name: &str) -> Option<(String, String)> {
 /// Linux:   ~/.operon/node/bin, /usr/local/bin, ~/.local/bin
 pub fn extra_tool_paths() -> Vec<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
-    { macos::extra_tool_paths() }
+    {
+        macos::extra_tool_paths()
+    }
     #[cfg(target_os = "windows")]
-    { windows::extra_tool_paths() }
+    {
+        windows::extra_tool_paths()
+    }
     #[cfg(target_os = "linux")]
-    { linux::extra_tool_paths() }
+    {
+        linux::extra_tool_paths()
+    }
 }
 
 /// Build an augmented PATH string that includes platform-specific tool locations.
@@ -164,38 +194,58 @@ pub fn augmented_path() -> String {
 /// Platform-specific dependency check for the setup wizard.
 pub fn check_dependencies() -> crate::commands::claude::DependencyStatus {
     #[cfg(target_os = "macos")]
-    { macos::check_dependencies() }
+    {
+        macos::check_dependencies()
+    }
     #[cfg(target_os = "windows")]
-    { windows::check_dependencies() }
+    {
+        windows::check_dependencies()
+    }
     #[cfg(target_os = "linux")]
-    { linux::check_dependencies() }
+    {
+        linux::check_dependencies()
+    }
 }
 
 /// Install Node.js using the best method for this platform.
 pub fn install_node_platform() -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    { macos::install_node_platform() }
+    {
+        macos::install_node_platform()
+    }
     #[cfg(target_os = "windows")]
-    { windows::install_node_platform() }
+    {
+        windows::install_node_platform()
+    }
     #[cfg(target_os = "linux")]
-    { linux::install_node_platform() }
+    {
+        linux::install_node_platform()
+    }
 }
 
 /// Install Claude Code.
 pub fn install_claude_platform() -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    { macos::install_claude_platform() }
+    {
+        macos::install_claude_platform()
+    }
     #[cfg(target_os = "windows")]
-    { windows::install_claude_platform() }
+    {
+        windows::install_claude_platform()
+    }
     #[cfg(target_os = "linux")]
-    { linux::install_claude_platform() }
+    {
+        linux::install_claude_platform()
+    }
 }
 
 /// Refresh the process PATH after installers modify system PATH.
 /// On Windows, reads from the registry. On macOS/Linux, no-op (shell inheritance handles it).
 pub fn refresh_path() {
     #[cfg(target_os = "windows")]
-    { windows::refresh_path_from_registry(); }
+    {
+        windows::refresh_path_from_registry();
+    }
     #[cfg(not(target_os = "windows"))]
     { /* macOS/Linux: login shell re-reads PATH automatically */ }
 }
@@ -204,9 +254,13 @@ pub fn refresh_path() {
 /// Claude Code on Windows requires Git Bash to function.
 pub fn install_git_platform() -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    { windows::install_git() }
+    {
+        windows::install_git()
+    }
     #[cfg(not(target_os = "windows"))]
-    { Ok(()) } // Git/bash always available on macOS/Linux
+    {
+        Ok(())
+    } // Git/bash always available on macOS/Linux
 }
 
 /// Persist CLAUDE_CODE_GIT_BASH_PATH as a user-level environment variable.
@@ -214,7 +268,9 @@ pub fn install_git_platform() -> Result<(), String> {
 /// On other platforms, no-op (native bash is always available).
 pub fn persist_git_bash_env() {
     #[cfg(target_os = "windows")]
-    { windows::persist_git_bash_env(); }
+    {
+        windows::persist_git_bash_env();
+    }
     #[cfg(not(target_os = "windows"))]
     { /* no-op */ }
 }
@@ -224,35 +280,53 @@ pub fn persist_git_bash_env() {
 /// On macOS/Linux, returns None (not needed — native bash is used).
 pub fn find_git_bash_path() -> Option<String> {
     #[cfg(target_os = "windows")]
-    { windows::find_git_bash() }
+    {
+        windows::find_git_bash()
+    }
     #[cfg(not(target_os = "windows"))]
-    { None }
+    {
+        None
+    }
 }
 
 /// Install Xcode CLI tools (macOS only, no-op on other platforms).
 pub fn install_xcode_cli_platform() -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    { macos::install_xcode_cli() }
+    {
+        macos::install_xcode_cli()
+    }
     #[cfg(not(target_os = "macos"))]
-    { Ok(()) }
+    {
+        Ok(())
+    }
 }
 
 /// Install Homebrew (macOS only, no-op on other platforms).
 pub fn install_homebrew_platform() -> Result<String, String> {
     #[cfg(target_os = "macos")]
-    { macos::install_homebrew_silent() }
+    {
+        macos::install_homebrew_silent()
+    }
     #[cfg(not(target_os = "macos"))]
-    { Err("Homebrew is not applicable on this platform".to_string()) }
+    {
+        Err("Homebrew is not applicable on this platform".to_string())
+    }
 }
 
 /// Find the platform package manager binary path (brew/winget/apt).
 pub fn find_package_manager() -> Option<String> {
     #[cfg(target_os = "macos")]
-    { macos::find_brew() }
+    {
+        macos::find_brew()
+    }
     #[cfg(target_os = "windows")]
-    { windows::find_winget() }
+    {
+        windows::find_winget()
+    }
     #[cfg(target_os = "linux")]
-    { linux::find_apt() }
+    {
+        linux::find_apt()
+    }
 }
 
 // ─── SSH ─────────────────────────────────────────────────────────
@@ -261,25 +335,35 @@ pub fn find_package_manager() -> Option<String> {
 ///
 /// macOS/Linux: ControlMaster=auto ControlPath=... ControlPersist=4h
 /// Windows:     empty (use ssh-agent service instead)
-pub fn ssh_mux_args(
-    _host: &str, _port: u16, _user: &str, _as_master: bool,
-) -> String {
+pub fn ssh_mux_args(_host: &str, _port: u16, _user: &str, _as_master: bool) -> String {
     #[cfg(target_os = "macos")]
-    { macos::ssh_mux_args(_host, _port, _user) }
+    {
+        macos::ssh_mux_args(_host, _port, _user)
+    }
     #[cfg(target_os = "windows")]
-    { String::new() } // ControlMaster not supported on Windows
+    {
+        String::new()
+    } // ControlMaster not supported on Windows
     #[cfg(target_os = "linux")]
-    { linux::ssh_mux_args(_host, _port, _user) }
+    {
+        linux::ssh_mux_args(_host, _port, _user)
+    }
 }
 
 /// Check if an SSH multiplexed connection is alive.
 pub fn ssh_mux_check(_host: &str, _port: u16, _user: &str) -> bool {
     #[cfg(target_os = "macos")]
-    { macos::ssh_mux_check(_host, _port, _user) }
+    {
+        macos::ssh_mux_check(_host, _port, _user)
+    }
     #[cfg(target_os = "windows")]
-    { false }
+    {
+        false
+    }
     #[cfg(target_os = "linux")]
-    { linux::ssh_mux_check(_host, _port, _user) }
+    {
+        linux::ssh_mux_check(_host, _port, _user)
+    }
 }
 
 /// Return the ControlMaster socket path for a given connection.
@@ -292,22 +376,34 @@ pub fn ssh_socket_path(host: &str, port: u16, user: &str) -> std::path::PathBuf 
 /// Open a URL in the user's default browser.
 pub fn open_url(url: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    { macos::open_url(url) }
+    {
+        macos::open_url(url)
+    }
     #[cfg(target_os = "windows")]
-    { windows::open_url(url) }
+    {
+        windows::open_url(url)
+    }
     #[cfg(target_os = "linux")]
-    { linux::open_url(url) }
+    {
+        linux::open_url(url)
+    }
 }
 
 /// Open a terminal emulator with a command running in it.
 /// Used as a fallback when in-app installation fails.
 pub fn open_terminal_with_command(command: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    { macos::open_terminal_with_command(command) }
+    {
+        macos::open_terminal_with_command(command)
+    }
     #[cfg(target_os = "windows")]
-    { windows::open_terminal_with_command(command) }
+    {
+        windows::open_terminal_with_command(command)
+    }
     #[cfg(target_os = "linux")]
-    { linux::open_terminal_with_command(command) }
+    {
+        linux::open_terminal_with_command(command)
+    }
 }
 
 // ─── Python ─────────────────────────────────────────────────────
@@ -317,23 +413,31 @@ pub fn open_terminal_with_command(command: &str) -> Result<(), String> {
 /// Windows:     "python" (Microsoft Store or installer)
 pub fn python_command() -> &'static str {
     #[cfg(target_os = "windows")]
-    { "python" }
+    {
+        "python"
+    }
     #[cfg(not(target_os = "windows"))]
-    { "python3" }
+    {
+        "python3"
+    }
 }
 
 /// Find the Python executable path.
 pub fn find_python() -> Option<String> {
     #[cfg(target_os = "windows")]
-    { windows::find_python() }
+    {
+        windows::find_python()
+    }
     #[cfg(target_os = "macos")]
     {
-        check_tool("python3").map(|(p, _)| p)
+        check_tool("python3")
+            .map(|(p, _)| p)
             .or_else(|| check_tool("python").map(|(p, _)| p))
     }
     #[cfg(target_os = "linux")]
     {
-        check_tool("python3").map(|(p, _)| p)
+        check_tool("python3")
+            .map(|(p, _)| p)
             .or_else(|| check_tool("python").map(|(p, _)| p))
     }
 }
@@ -341,7 +445,9 @@ pub fn find_python() -> Option<String> {
 /// Install Python (Windows only via winget; macOS/Linux assume system Python or brew/apt).
 pub fn install_python_platform() -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    { windows::install_python() }
+    {
+        windows::install_python()
+    }
     #[cfg(target_os = "macos")]
     {
         // Try Homebrew
@@ -350,7 +456,9 @@ pub fn install_python_platform() -> Result<(), String> {
                 .args(["install", "python@3.12"])
                 .output();
             if let Ok(o) = output {
-                if o.status.success() { return Ok(()); }
+                if o.status.success() {
+                    return Ok(());
+                }
             }
         }
         Err("Python could not be installed. Install via: brew install python@3.12".to_string())
@@ -358,15 +466,22 @@ pub fn install_python_platform() -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         let has_sudo = std::process::Command::new("sudo")
-            .args(["-n", "true"]).output()
-            .map(|o| o.status.success()).unwrap_or(false);
+            .args(["-n", "true"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
         if has_sudo {
             let result = shell_exec("sudo apt-get install -y python3 python3-pip").output();
             if let Ok(o) = result {
-                if o.status.success() { return Ok(()); }
+                if o.status.success() {
+                    return Ok(());
+                }
             }
         }
-        Err("Python could not be installed. Install via: sudo apt install python3 python3-pip".to_string())
+        Err(
+            "Python could not be installed. Install via: sudo apt install python3 python3-pip"
+                .to_string(),
+        )
     }
 }
 
@@ -375,17 +490,25 @@ pub fn install_python_platform() -> Result<(), String> {
 /// Check if OpenSSH client is available.
 pub fn has_openssh() -> bool {
     #[cfg(target_os = "windows")]
-    { windows::has_openssh() }
+    {
+        windows::has_openssh()
+    }
     #[cfg(not(target_os = "windows"))]
-    { true } // Always available on macOS/Linux
+    {
+        true
+    } // Always available on macOS/Linux
 }
 
 /// Install OpenSSH client (Windows only; always present on macOS/Linux).
 pub fn install_openssh_platform() -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    { windows::install_openssh() }
+    {
+        windows::install_openssh()
+    }
     #[cfg(not(target_os = "windows"))]
-    { Ok(()) }
+    {
+        Ok(())
+    }
 }
 
 // ─── uv / uvx ──────────────────────────────────────────────────
@@ -393,7 +516,9 @@ pub fn install_openssh_platform() -> Result<(), String> {
 /// Check if uv/uvx is installed.
 pub fn has_uv() -> bool {
     #[cfg(target_os = "windows")]
-    { windows::has_uv() }
+    {
+        windows::has_uv()
+    }
     #[cfg(not(target_os = "windows"))]
     {
         check_tool("uvx").is_some() || check_tool("uv").is_some()
@@ -403,21 +528,28 @@ pub fn has_uv() -> bool {
 /// Install uv (the Python package manager that provides uvx).
 pub fn install_uv_platform() -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    { windows::install_uv() }
+    {
+        windows::install_uv()
+    }
     #[cfg(target_os = "macos")]
     {
         // Strategy 1: Homebrew
         if let Some(brew) = macos::find_brew() {
             let output = std::process::Command::new(&brew)
-                .args(["install", "uv"]).output();
+                .args(["install", "uv"])
+                .output();
             if let Ok(o) = output {
-                if o.status.success() { return Ok(()); }
+                if o.status.success() {
+                    return Ok(());
+                }
             }
         }
         // Strategy 2: curl installer
         let result = shell_exec("curl -LsSf https://astral.sh/uv/install.sh | sh").output();
         if let Ok(o) = result {
-            if o.status.success() { return Ok(()); }
+            if o.status.success() {
+                return Ok(());
+            }
         }
         Err("uv could not be installed. Install from https://docs.astral.sh/uv/".to_string())
     }
@@ -426,7 +558,9 @@ pub fn install_uv_platform() -> Result<(), String> {
         // Strategy 1: curl installer
         let result = shell_exec("curl -LsSf https://astral.sh/uv/install.sh | sh").output();
         if let Ok(o) = result {
-            if o.status.success() { return Ok(()); }
+            if o.status.success() {
+                return Ok(());
+            }
         }
         Err("uv could not be installed. Install from https://docs.astral.sh/uv/".to_string())
     }
@@ -437,7 +571,9 @@ pub fn install_uv_platform() -> Result<(), String> {
 /// Check if reportlab (Python PDF library) is installed.
 pub fn has_reportlab() -> bool {
     #[cfg(target_os = "windows")]
-    { windows::has_reportlab() }
+    {
+        windows::has_reportlab()
+    }
     #[cfg(not(target_os = "windows"))]
     {
         std::process::Command::new(python_command())
@@ -451,7 +587,9 @@ pub fn has_reportlab() -> bool {
 /// Install reportlab via pip.
 pub fn install_reportlab_platform() -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    { windows::install_reportlab() }
+    {
+        windows::install_reportlab()
+    }
     #[cfg(not(target_os = "windows"))]
     {
         let py = python_command();
@@ -460,21 +598,34 @@ pub fn install_reportlab_platform() -> Result<(), String> {
             .args(["-m", "pip", "install", "reportlab", "--user", "--quiet"])
             .output()
         {
-            if o.status.success() { return Ok(()); }
+            if o.status.success() {
+                return Ok(());
+            }
         }
         // Strategy 2: --break-system-packages (Linux)
         if let Ok(o) = std::process::Command::new(py)
-            .args(["-m", "pip", "install", "reportlab", "--quiet", "--break-system-packages"])
+            .args([
+                "-m",
+                "pip",
+                "install",
+                "reportlab",
+                "--quiet",
+                "--break-system-packages",
+            ])
             .output()
         {
-            if o.status.success() { return Ok(()); }
+            if o.status.success() {
+                return Ok(());
+            }
         }
         // Strategy 3: pip3 directly
         if let Ok(o) = std::process::Command::new("pip3")
             .args(["install", "reportlab", "--user", "--quiet"])
             .output()
         {
-            if o.status.success() { return Ok(()); }
+            if o.status.success() {
+                return Ok(());
+            }
         }
         Err("reportlab could not be installed. Run: pip3 install reportlab".to_string())
     }
@@ -485,19 +636,29 @@ pub fn install_reportlab_platform() -> Result<(), String> {
 /// Whether native dictation is available on this platform.
 pub fn supports_dictation() -> bool {
     #[cfg(target_os = "macos")]
-    { true }
+    {
+        true
+    }
     #[cfg(target_os = "windows")]
-    { false } // Could be true in the future via SAPI
+    {
+        false
+    } // Could be true in the future via SAPI
     #[cfg(target_os = "linux")]
-    { false }
+    {
+        false
+    }
 }
 
 /// Whether SSH ControlMaster multiplexing is supported.
 pub fn supports_ssh_mux() -> bool {
     #[cfg(target_os = "windows")]
-    { false }
+    {
+        false
+    }
     #[cfg(not(target_os = "windows"))]
-    { true }
+    {
+        true
+    }
 }
 
 /// Whether Xcode CLI tools are relevant on this platform.
@@ -512,11 +673,17 @@ pub fn build_menu(
     app: &tauri::App,
 ) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     #[cfg(target_os = "macos")]
-    { macos::build_menu(app) }
+    {
+        macos::build_menu(app)
+    }
     #[cfg(target_os = "windows")]
-    { windows::build_menu(app) }
+    {
+        windows::build_menu(app)
+    }
     #[cfg(target_os = "linux")]
-    { linux::build_menu(app) }
+    {
+        linux::build_menu(app)
+    }
 }
 
 // ─── Dictation ───────────────────────────────────────────────────
@@ -524,7 +691,9 @@ pub fn build_menu(
 /// Start native speech recognition. Platform-specific.
 pub fn start_dictation_platform(app: &tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    { macos::start_dictation(app) }
+    {
+        macos::start_dictation(app)
+    }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = app;
@@ -537,7 +706,9 @@ pub fn start_dictation_platform(app: &tauri::AppHandle) -> Result<(), String> {
 /// Check if a file is hidden according to OS conventions.
 pub fn is_hidden(path: &std::path::Path) -> bool {
     #[cfg(target_os = "windows")]
-    { windows::is_hidden(path) }
+    {
+        windows::is_hidden(path)
+    }
     #[cfg(not(target_os = "windows"))]
     {
         path.file_name()
@@ -553,9 +724,13 @@ pub fn is_hidden(path: &std::path::Path) -> bool {
 /// Windows:     ';'
 pub fn path_separator() -> char {
     #[cfg(target_os = "windows")]
-    { ';' }
+    {
+        ';'
+    }
     #[cfg(not(target_os = "windows"))]
-    { ':' }
+    {
+        ':'
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────

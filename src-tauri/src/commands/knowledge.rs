@@ -83,15 +83,14 @@ pub async fn search_pubmed(
         .esearchresult
         .ok_or("No search results returned")?;
 
-    let total_found: u64 = inner
-        .count
-        .as_deref()
-        .unwrap_or("0")
-        .parse()
-        .unwrap_or(0);
+    let total_found: u64 = inner.count.as_deref().unwrap_or("0").parse().unwrap_or(0);
 
     let pmids = inner.idlist.unwrap_or_default();
-    eprintln!("[PubMed] Found {} PMIDs (total: {})", pmids.len(), total_found);
+    eprintln!(
+        "[PubMed] Found {} PMIDs (total: {})",
+        pmids.len(),
+        total_found
+    );
 
     if pmids.is_empty() {
         return Ok(PubMedSearchResult {
@@ -109,11 +108,7 @@ pub async fn search_pubmed(
     // Step 3: ESummary — get metadata (title, authors, journal, date, DOI)
     let summary_resp = client
         .get(ESUMMARY_URL)
-        .query(&[
-            ("db", "pubmed"),
-            ("retmode", "json"),
-            ("id", &id_list),
-        ])
+        .query(&[("db", "pubmed"), ("retmode", "json"), ("id", &id_list)])
         .send()
         .await
         .map_err(|e| format!("PubMed summary failed: {}", e))?;
@@ -168,10 +163,7 @@ pub async fn search_pubmed(
                 .replace("doi: ", "")
                 .to_string();
 
-            let abstract_text = abstracts
-                .get(pmid.as_str())
-                .cloned()
-                .unwrap_or_default();
+            let abstract_text = abstracts.get(pmid.as_str()).cloned().unwrap_or_default();
 
             articles.push(PubMedArticle {
                 pmid: pmid.clone(),
@@ -186,7 +178,13 @@ pub async fn search_pubmed(
         }
     }
 
-    eprintln!("[PubMed] Returning {} articles with abstracts", articles.iter().filter(|a| !a.abstract_text.is_empty()).count());
+    eprintln!(
+        "[PubMed] Returning {} articles with abstracts",
+        articles
+            .iter()
+            .filter(|a| !a.abstract_text.is_empty())
+            .count()
+    );
 
     Ok(PubMedSearchResult {
         query,

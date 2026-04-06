@@ -26,7 +26,9 @@ pub fn default_shell() -> String {
 
 pub fn check_tool(name: &str) -> Option<(String, String)> {
     let which = shell_exec(&format!("which {}", name)).output().ok()?;
-    if !which.status.success() { return None; }
+    if !which.status.success() {
+        return None;
+    }
     let path = String::from_utf8_lossy(&which.stdout).trim().to_string();
     let ver_out = shell_exec(&format!("{} --version", name)).output().ok()?;
     let version = String::from_utf8_lossy(&ver_out.stdout).trim().to_string();
@@ -52,8 +54,7 @@ pub fn open_url(url: &str) -> Result<(), String> {
     let tmp_dir = std::env::temp_dir();
     let url_file = tmp_dir.join("operon_open_url.txt");
 
-    std::fs::write(&url_file, url)
-        .map_err(|e| format!("Failed to write URL file: {}", e))?;
+    std::fs::write(&url_file, url).map_err(|e| format!("Failed to write URL file: {}", e))?;
 
     let python_cmd = format!(
         "import webbrowser; url=open('{}').read().strip(); webbrowser.open(url)",
@@ -77,7 +78,8 @@ pub fn open_terminal_with_command(command: &str) -> Result<(), String> {
         command.replace('\\', "\\\\").replace('"', "\\\"")
     );
     std::process::Command::new("osascript")
-        .arg("-e").arg(&script)
+        .arg("-e")
+        .arg(&script)
         .output()
         .map_err(|e| format!("osascript failed: {}", e))?;
     Ok(())
@@ -99,7 +101,10 @@ pub fn ssh_mux_check(host: &str, port: u16, user: &str) -> bool {
     let sock = super::ssh_socket_path(host, port, user);
     let check_cmd = format!(
         "ssh -o \"ControlPath={}\" -O check {}@{} -p {} 2>/dev/null",
-        sock.display(), user, host, port
+        sock.display(),
+        user,
+        host,
+        port
     );
     shell_exec(&check_cmd)
         .output()
@@ -115,14 +120,18 @@ pub fn check_dependencies() -> DependencyStatus {
     let check_cmd = |cmd: &str| -> Option<std::process::Output> {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
         std::process::Command::new(&shell)
-            .arg("-l").arg("-c").arg(cmd)
+            .arg("-l")
+            .arg("-c")
+            .arg(cmd)
             .env("PATH", &aug_path)
-            .output().ok()
+            .output()
+            .ok()
     };
 
     // Check Xcode CLI tools
     let xcode = check_cmd("xcode-select -p")
-        .map(|o| o.status.success()).unwrap_or(false);
+        .map(|o| o.status.success())
+        .unwrap_or(false);
 
     // Check Node.js
     let node_out = check_cmd("node --version");
@@ -135,10 +144,14 @@ pub fn check_dependencies() -> DependencyStatus {
         for p in extra_tool_paths() {
             let node_bin = p.join("node");
             if node_bin.exists() {
-                if let Ok(out) = std::process::Command::new(&node_bin).arg("--version").output() {
+                if let Ok(out) = std::process::Command::new(&node_bin)
+                    .arg("--version")
+                    .output()
+                {
                     if out.status.success() {
                         node = true;
-                        node_version = Some(String::from_utf8_lossy(&out.stdout).trim().to_string());
+                        node_version =
+                            Some(String::from_utf8_lossy(&out.stdout).trim().to_string());
                         break;
                     }
                 }
@@ -157,7 +170,10 @@ pub fn check_dependencies() -> DependencyStatus {
         for p in extra_tool_paths() {
             let npm_bin = p.join("npm");
             if npm_bin.exists() {
-                if let Ok(out) = std::process::Command::new(&npm_bin).arg("--version").output() {
+                if let Ok(out) = std::process::Command::new(&npm_bin)
+                    .arg("--version")
+                    .output()
+                {
                     if out.status.success() {
                         npm = true;
                         npm_version = Some(String::from_utf8_lossy(&out.stdout).trim().to_string());
@@ -189,8 +205,12 @@ pub fn check_dependencies() -> DependencyStatus {
 
 pub fn install_xcode_cli() -> Result<(), String> {
     let check = shell_exec("xcode-select -p")
-        .output().map(|o| o.status.success()).unwrap_or(false);
-    if check { return Ok(()); }
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if check {
+        return Ok(());
+    }
 
     let output = std::process::Command::new("xcode-select")
         .arg("--install")
@@ -211,7 +231,11 @@ pub fn install_xcode_cli() -> Result<(), String> {
 
 /// Download a Node.js tar.gz, extract to the Operon-managed dir, and add to PATH.
 fn install_node_tarball() -> Result<(), String> {
-    let arch = if cfg!(target_arch = "aarch64") { "arm64" } else { "x64" };
+    let arch = if cfg!(target_arch = "aarch64") {
+        "arm64"
+    } else {
+        "x64"
+    };
     let node_version = "v22.14.0";
     let tarball_url = format!(
         "https://nodejs.org/dist/{}/node-{}-darwin-{}.tar.gz",
@@ -234,7 +258,9 @@ fn install_node_tarball() -> Result<(), String> {
         return Err(format!("Download failed: {}", stderr));
     }
 
-    if dest.exists() { let _ = std::fs::remove_dir_all(&dest); }
+    if dest.exists() {
+        let _ = std::fs::remove_dir_all(&dest);
+    }
     std::fs::create_dir_all(&dest)
         .map_err(|e| format!("Failed to create {}: {}", dest.display(), e))?;
 
@@ -248,7 +274,10 @@ fn install_node_tarball() -> Result<(), String> {
         .map_err(|e| format!("tar failed: {}", e))?;
 
     if !extract.status.success() {
-        return Err(format!("Extract failed: {}", String::from_utf8_lossy(&extract.stderr)));
+        return Err(format!(
+            "Extract failed: {}",
+            String::from_utf8_lossy(&extract.stderr)
+        ));
     }
     let _ = std::fs::remove_file(&tmp_tar);
 
@@ -257,10 +286,15 @@ fn install_node_tarball() -> Result<(), String> {
         return Err("Node binary not found after extraction".to_string());
     }
 
-    let check = std::process::Command::new(&node_bin).arg("--version").output();
+    let check = std::process::Command::new(&node_bin)
+        .arg("--version")
+        .output();
     match check {
         Ok(o) if o.status.success() => {
-            eprintln!("[Node] Installed: {}", String::from_utf8_lossy(&o.stdout).trim());
+            eprintln!(
+                "[Node] Installed: {}",
+                String::from_utf8_lossy(&o.stdout).trim()
+            );
         }
         _ => return Err("Node binary exists but won't run".to_string()),
     }
@@ -290,18 +324,26 @@ fn install_node_tarball() -> Result<(), String> {
 pub fn install_node_platform() -> Result<(), String> {
     // Already installed?
     let has_node = shell_exec("node --version")
-        .output().map(|o| o.status.success()).unwrap_or(false);
-    if has_node { return Ok(()); }
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if has_node {
+        return Ok(());
+    }
 
     // Check Operon-managed install
-    if super::operon_node_dir().join("bin").join("node").exists() { return Ok(()); }
+    if super::operon_node_dir().join("bin").join("node").exists() {
+        return Ok(());
+    }
 
     // Try Homebrew
     if let Some(brew) = find_brew() {
         eprintln!("[Node] Trying Homebrew...");
         let output = shell_exec(&format!("{} install node", brew)).output();
         if let Ok(o) = output {
-            if o.status.success() { return Ok(()); }
+            if o.status.success() {
+                return Ok(());
+            }
         }
     }
 
@@ -311,8 +353,12 @@ pub fn install_node_platform() -> Result<(), String> {
 
 pub fn install_claude_platform() -> Result<(), String> {
     let has_claude = shell_exec("claude --version")
-        .output().map(|o| o.status.success()).unwrap_or(false);
-    if has_claude { return Ok(()); }
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if has_claude {
+        return Ok(());
+    }
 
     // Method 1: Official installer
     let output = shell_exec("curl -fsSL https://claude.ai/install.sh | bash").output();
@@ -334,7 +380,9 @@ pub fn install_claude_platform() -> Result<(), String> {
     if let Some(npm) = find_npm() {
         let result = shell_exec(&format!("{} install -g @anthropic-ai/claude-code", npm)).output();
         if let Ok(o) = result {
-            if o.status.success() { return Ok(()); }
+            if o.status.success() {
+                return Ok(());
+            }
         }
     }
 
@@ -353,30 +401,64 @@ pub fn install_homebrew_silent() -> Result<String, String> {
     }
 
     let is_arm = cfg!(target_arch = "aarch64");
-    let prefix = if is_arm { "/opt/homebrew" } else { "/usr/local" };
+    let prefix = if is_arm {
+        "/opt/homebrew"
+    } else {
+        "/usr/local"
+    };
 
     let current_user = std::env::var("USER")
         .or_else(|_| std::env::var("LOGNAME"))
         .unwrap_or_else(|_| {
             String::from_utf8_lossy(
-                &std::process::Command::new("id").arg("-un")
-                    .output().map(|o| o.stdout).unwrap_or_default()
-            ).trim().to_string()
+                &std::process::Command::new("id")
+                    .arg("-un")
+                    .output()
+                    .map(|o| o.stdout)
+                    .unwrap_or_default(),
+            )
+            .trim()
+            .to_string()
         });
 
     // Phase 1: Create directories with admin privileges
     let subdirs = [
-        "bin", "etc", "include", "lib", "sbin", "share", "var", "opt",
-        "Cellar", "Caskroom", "Frameworks",
-        "etc/bash_completion.d", "lib/pkgconfig",
-        "share/aclocal", "share/doc", "share/info", "share/locale", "share/man",
-        "share/man/man1", "share/man/man2", "share/man/man3", "share/man/man4",
-        "share/man/man5", "share/man/man6", "share/man/man7", "share/man/man8",
-        "share/zsh", "share/zsh/site-functions",
-        "var/homebrew", "var/homebrew/linked", "var/log",
+        "bin",
+        "etc",
+        "include",
+        "lib",
+        "sbin",
+        "share",
+        "var",
+        "opt",
+        "Cellar",
+        "Caskroom",
+        "Frameworks",
+        "etc/bash_completion.d",
+        "lib/pkgconfig",
+        "share/aclocal",
+        "share/doc",
+        "share/info",
+        "share/locale",
+        "share/man",
+        "share/man/man1",
+        "share/man/man2",
+        "share/man/man3",
+        "share/man/man4",
+        "share/man/man5",
+        "share/man/man6",
+        "share/man/man7",
+        "share/man/man8",
+        "share/zsh",
+        "share/zsh/site-functions",
+        "var/homebrew",
+        "var/homebrew/linked",
+        "var/log",
     ];
-    let mkdir_list: Vec<String> = subdirs.iter()
-        .map(|s| format!("{}/{}", prefix, s)).collect();
+    let mkdir_list: Vec<String> = subdirs
+        .iter()
+        .map(|s| format!("{}/{}", prefix, s))
+        .collect();
 
     let admin_script = format!(
         "mkdir -p {} {} && chown -R {}:admin {} && chmod -R 755 {} && chmod go-w {}/share/zsh {}/share/zsh/site-functions",
@@ -388,7 +470,8 @@ pub fn install_homebrew_silent() -> Result<String, String> {
     );
 
     let mkdir_result = std::process::Command::new("osascript")
-        .arg("-e").arg(&osascript_cmd)
+        .arg("-e")
+        .arg(&osascript_cmd)
         .output()
         .map_err(|e| format!("osascript failed: {}", e))?;
 
@@ -408,13 +491,21 @@ pub fn install_homebrew_silent() -> Result<String, String> {
     let _ = std::fs::remove_dir_all(&tmp_clone);
 
     let clone_result = std::process::Command::new("git")
-        .args(["clone", "--depth=1", "https://github.com/Homebrew/brew", &tmp_clone])
+        .args([
+            "clone",
+            "--depth=1",
+            "https://github.com/Homebrew/brew",
+            &tmp_clone,
+        ])
         .output()
         .map_err(|e| format!("git clone failed: {}", e))?;
 
     if !clone_result.status.success() {
         let _ = std::fs::remove_dir_all(&tmp_clone);
-        return Err(format!("git clone failed: {}", String::from_utf8_lossy(&clone_result.stderr)));
+        return Err(format!(
+            "git clone failed: {}",
+            String::from_utf8_lossy(&clone_result.stderr)
+        ));
     }
 
     let rsync_result = std::process::Command::new("rsync")
@@ -476,7 +567,9 @@ fn find_npm() -> Option<String> {
             return Some(path.to_string());
         }
     }
-    shell_exec("which npm").output().ok()
+    shell_exec("which npm")
+        .output()
+        .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
@@ -486,7 +579,7 @@ fn find_npm() -> Option<String> {
 pub fn build_menu(
     app: &tauri::App,
 ) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
-    use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
     let app_submenu = SubmenuBuilder::new(app, "Operon")
         .item(&PredefinedMenuItem::about(app, Some("About Operon"), None)?)
@@ -523,12 +616,9 @@ pub fn build_menu(
         .item(&PredefinedMenuItem::maximize(app, None)?)
         .build()?;
 
-    let help_item = MenuItemBuilder::with_id("open-help", "Operon Help")
-        .build(app)?;
+    let help_item = MenuItemBuilder::with_id("open-help", "Operon Help").build(app)?;
 
-    let help_submenu = SubmenuBuilder::new(app, "Help")
-        .item(&help_item)
-        .build()?;
+    let help_submenu = SubmenuBuilder::new(app, "Help").item(&help_item).build()?;
 
     let menu = MenuBuilder::new(app)
         .item(&app_submenu)
@@ -639,7 +729,8 @@ RunLoop.main.run()
     let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
     if let Some(stdin) = child.stdin.take() {
-        let mut guard = super::super::commands::settings::DICTATION_PROCESS.lock()
+        let mut guard = super::super::commands::settings::DICTATION_PROCESS
+            .lock()
             .map_err(|e| e.to_string())?;
         *guard = Some(super::super::commands::settings::DictationProcess { stdin, pid });
     }
@@ -651,13 +742,19 @@ RunLoop.main.run()
         for line in reader.lines() {
             if let Ok(line) = line {
                 if line.starts_with("PARTIAL:") {
-                    let _ = app1.emit("dictation-result", serde_json::json!({
-                        "text": &line[8..], "isFinal": false
-                    }));
+                    let _ = app1.emit(
+                        "dictation-result",
+                        serde_json::json!({
+                            "text": &line[8..], "isFinal": false
+                        }),
+                    );
                 } else if line.starts_with("FINAL:") {
-                    let _ = app1.emit("dictation-result", serde_json::json!({
-                        "text": &line[6..], "isFinal": true
-                    }));
+                    let _ = app1.emit(
+                        "dictation-result",
+                        serde_json::json!({
+                            "text": &line[6..], "isFinal": true
+                        }),
+                    );
                 } else if line.starts_with("DONE:") {
                     let _ = app1.emit("dictation-done", "complete");
                 }
@@ -684,7 +781,9 @@ RunLoop.main.run()
         }
     });
 
-    std::thread::spawn(move || { let _ = child.wait(); });
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
 
     Ok(())
 }

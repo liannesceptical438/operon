@@ -1,24 +1,69 @@
-pub mod terminal;
-pub mod files;
 pub mod claude;
-pub mod ssh;
-pub mod mcp;
-pub mod settings;
+pub mod extensions;
+pub mod files;
 pub mod git;
 pub mod knowledge;
-pub mod extensions;
+pub mod mcp;
 pub mod report;
+pub mod settings;
+pub mod ssh;
+pub mod terminal;
 
-pub use terminal::{spawn_terminal, write_terminal, resize_terminal, kill_terminal};
-pub use files::{list_directory, read_file, read_file_base64, write_file, save_clipboard_image, save_attachment_file, get_home_dir, create_file, create_directory, delete_path, rename_path, index_project, index_remote_project, list_protocols, read_protocol, get_protocols_dir, save_protocol, delete_protocol, generate_protocol};
-pub use claude::{check_claude_installed, install_claude, store_api_key, get_api_key, delete_api_key, check_oauth_status, launch_claude_login, check_auth_status, start_claude_session, stop_claude_session, check_existing_plan, archive_current_plan, list_plan_history, read_plan_history_entry, save_session_metadata, update_session_claude_id, update_session_status, list_sessions, check_session_files, read_session_output, reconnect_session, delete_session, rename_session, check_local_dependencies, refresh_environment, install_xcode_cli, install_node, install_all_dependencies, install_phase_xcode, install_phase_tools, install_phase_claude, check_remote_claude, check_remote_claude_auth, install_remote_claude};
-pub use ssh::{save_ssh_profile, list_ssh_profiles, get_server_config, detect_server_config, delete_ssh_profile, spawn_ssh_terminal, list_remote_directory, get_remote_home, read_remote_file, read_remote_file_base64, create_remote_directory, write_remote_file, scp_to_remote, scp_from_remote, scp_dir_from_remote, scp_batch_upload, clear_ssh_cache, setup_ssh_key, test_ssh_connection, check_control_master, stop_control_master};
-pub use settings::{get_settings, update_settings, start_dictation, stop_dictation};
-pub use git::{git_status, git_init, git_commit_all, git_push, gh_check_auth, gh_install, gh_login, gh_create_repo, git_version_info, git_tag_version, git_publish, gh_list_repos, gh_add_remote, git_list_branches, git_switch_branch, git_pull, git_changed_files, git_stage_files, git_unstage_files, git_discard_files, git_stash_list, git_stash_save, git_stash_pop, git_stash_drop, git_log, git_show_commit, git_amend};
+pub use claude::{
+    archive_current_plan, check_auth_status, check_claude_installed, check_existing_plan,
+    check_local_dependencies, check_oauth_status, check_remote_claude, check_remote_claude_auth,
+    check_session_files, delete_api_key, delete_session, get_api_key, install_all_dependencies,
+    install_claude, install_node, install_phase_claude, install_phase_tools, install_phase_xcode,
+    install_remote_claude, install_xcode_cli, launch_claude_login, list_plan_history,
+    list_sessions, read_plan_history_entry, read_session_output, reconnect_session,
+    refresh_environment, rename_session, save_session_metadata, start_claude_session,
+    stop_claude_session, store_api_key, update_session_claude_id, update_session_status,
+};
+pub use extensions::{
+    browse_extensions_by_category, check_extension_compatibility, check_extension_updates,
+    disable_extension, docker_container_action, docker_list_containers, docker_list_images,
+    docker_list_volumes, enable_extension, get_extension_config_schema, get_extension_details,
+    get_extension_manifest, get_extension_package_json, get_extension_readme,
+    get_extension_recommendations, get_extension_reviews, get_extension_settings,
+    get_namespace_extensions, install_extension_from_registry, install_remote_extension,
+    list_installed_extensions, list_language_servers, read_extension_snippets,
+    read_extension_theme, search_extensions, send_lsp_message, sideload_vsix, singularity_action,
+    singularity_list_images, singularity_list_instances, start_language_server,
+    start_remote_language_server, stop_language_server, uninstall_extension,
+    update_extension_settings, validate_extension_install,
+};
+pub use files::{
+    create_directory, create_file, delete_path, delete_protocol, generate_protocol, get_home_dir,
+    get_protocols_dir, index_project, index_remote_project, list_directory, list_protocols,
+    read_file, read_file_base64, read_protocol, rename_path, save_attachment_file,
+    save_clipboard_image, save_protocol, write_file,
+};
+pub use git::{
+    gh_add_remote, gh_check_auth, gh_create_repo, gh_install, gh_list_repos, gh_login, git_amend,
+    git_changed_files, git_commit_all, git_discard_files, git_init, git_list_branches, git_log,
+    git_publish, git_pull, git_push, git_show_commit, git_stage_files, git_stash_drop,
+    git_stash_list, git_stash_pop, git_stash_save, git_status, git_switch_branch, git_tag_version,
+    git_unstage_files, git_version_info,
+};
 pub use knowledge::search_pubmed;
-pub use extensions::{search_extensions, get_extension_details, get_extension_manifest, get_extension_readme, get_namespace_extensions, get_extension_reviews, check_extension_compatibility, browse_extensions_by_category, list_installed_extensions, enable_extension, disable_extension, get_extension_package_json, install_extension_from_registry, uninstall_extension, sideload_vsix, read_extension_theme, read_extension_snippets, start_language_server, send_lsp_message, stop_language_server, list_language_servers, get_extension_config_schema, get_extension_settings, update_extension_settings, check_extension_updates, get_extension_recommendations, validate_extension_install, docker_list_containers, docker_list_images, docker_list_volumes, docker_container_action, singularity_list_images, singularity_list_instances, singularity_action, start_remote_language_server, install_remote_extension};
-pub use mcp::{get_mcp_catalog, list_mcp_servers, add_mcp_server, remove_mcp_server, enable_mcp_server, disable_mcp_server, update_mcp_server_env, install_mcp_server, check_mcp_dependencies, check_remote_mcp_dependencies, install_remote_mcp_server};
-pub use report::{scan_project_files, scan_remote_project_files, extract_methods_info, read_csv_for_report, generate_report_pdf, batch_read_file_previews, batch_read_remote_file_previews};
+pub use mcp::{
+    add_mcp_server, check_mcp_dependencies, check_remote_mcp_dependencies, disable_mcp_server,
+    enable_mcp_server, get_mcp_catalog, install_mcp_server, install_remote_mcp_server,
+    list_mcp_servers, remove_mcp_server, update_mcp_server_env,
+};
+pub use report::{
+    batch_read_file_previews, batch_read_remote_file_previews, extract_methods_info,
+    generate_report_pdf, read_csv_for_report, scan_project_files, scan_remote_project_files,
+};
+pub use settings::{get_settings, start_dictation, stop_dictation, update_settings};
+pub use ssh::{
+    check_control_master, clear_ssh_cache, create_remote_directory, delete_ssh_profile,
+    detect_server_config, get_remote_home, get_server_config, list_remote_directory,
+    list_ssh_profiles, read_remote_file, read_remote_file_base64, save_ssh_profile,
+    scp_batch_upload, scp_dir_from_remote, scp_from_remote, scp_to_remote, setup_ssh_key,
+    spawn_ssh_terminal, stop_control_master, test_ssh_connection, write_remote_file,
+};
+pub use terminal::{kill_terminal, resize_terminal, spawn_terminal, write_terminal};
 
 #[tauri::command]
 pub fn greet(name: &str) -> String {

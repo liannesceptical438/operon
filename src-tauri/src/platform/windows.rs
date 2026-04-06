@@ -25,12 +25,20 @@ pub fn default_shell() -> String {
 pub fn check_tool(name: &str) -> Option<(String, String)> {
     let where_out = std::process::Command::new("where.exe")
         .arg(name)
-        .output().ok()?;
-    if !where_out.status.success() { return None; }
+        .output()
+        .ok()?;
+    if !where_out.status.success() {
+        return None;
+    }
     let path = String::from_utf8_lossy(&where_out.stdout)
-        .lines().next()?.trim().to_string();
+        .lines()
+        .next()?
+        .trim()
+        .to_string();
     let ver_out = std::process::Command::new(&path)
-        .arg("--version").output().ok()?;
+        .arg("--version")
+        .output()
+        .ok()?;
     let version = String::from_utf8_lossy(&ver_out.stdout).trim().to_string();
     Some((path, version))
 }
@@ -88,7 +96,10 @@ fn read_registry_path(key: &str, value: &str) -> Option<String> {
     // reg query output: "    Path    REG_EXPAND_SZ    C:\...;C:\..."
     for line in text.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with(value) || trimmed.contains("REG_EXPAND_SZ") || trimmed.contains("REG_SZ") {
+        if trimmed.starts_with(value)
+            || trimmed.contains("REG_EXPAND_SZ")
+            || trimmed.contains("REG_SZ")
+        {
             // Split on REG_EXPAND_SZ or REG_SZ and take the value part
             if let Some(pos) = trimmed.find("REG_EXPAND_SZ") {
                 return Some(trimmed[pos + "REG_EXPAND_SZ".len()..].trim().to_string());
@@ -126,9 +137,11 @@ pub fn open_terminal_with_command(command: &str) -> Result<(), String> {
     }
 
     // Strategy 2: PowerShell via full path in System32
-    let system32 = std::env::var("SYSTEMROOT")
-        .unwrap_or_else(|_| r"C:\Windows".to_string());
-    let ps_path = format!(r"{}\System32\WindowsPowerShell\v1.0\powershell.exe", system32);
+    let system32 = std::env::var("SYSTEMROOT").unwrap_or_else(|_| r"C:\Windows".to_string());
+    let ps_path = format!(
+        r"{}\System32\WindowsPowerShell\v1.0\powershell.exe",
+        system32
+    );
 
     let mut ps = std::process::Command::new(&ps_path);
     ps.args(["-NoExit", "-Command", command]);
@@ -155,8 +168,12 @@ pub fn open_terminal_with_command(command: &str) -> Result<(), String> {
     if let Some(ref bash_path) = git_bash_env {
         cmd.env("CLAUDE_CODE_GIT_BASH_PATH", bash_path);
     }
-    cmd.spawn()
-        .map_err(|e| format!("Failed to open any terminal (tried wt, PowerShell, cmd): {}", e))?;
+    cmd.spawn().map_err(|e| {
+        format!(
+            "Failed to open any terminal (tried wt, PowerShell, cmd): {}",
+            e
+        )
+    })?;
     Ok(())
 }
 
@@ -205,7 +222,8 @@ pub fn find_git_bash() -> Option<String> {
     // Check PATH via where.exe
     let where_out = std::process::Command::new("where.exe")
         .arg("bash.exe")
-        .output().ok()?;
+        .output()
+        .ok()?;
     if where_out.status.success() {
         // where.exe may return multiple results; prefer one inside a Git directory
         for line in String::from_utf8_lossy(&where_out.stdout).lines() {
@@ -216,7 +234,10 @@ pub fn find_git_bash() -> Option<String> {
         }
         // If no Git-specific one, take the first result
         let first = String::from_utf8_lossy(&where_out.stdout)
-            .lines().next()?.trim().to_string();
+            .lines()
+            .next()?
+            .trim()
+            .to_string();
         if !first.is_empty() {
             return Some(first);
         }
@@ -262,7 +283,10 @@ pub fn install_git() -> Result<(), String> {
             true
         }
         Ok(o) => {
-            eprintln!("[Git] certutil failed: {}", String::from_utf8_lossy(&o.stderr));
+            eprintln!(
+                "[Git] certutil failed: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
             false
         }
         Err(e) => {
@@ -272,7 +296,9 @@ pub fn install_git() -> Result<(), String> {
     };
 
     // Strategy 2: PowerShell Invoke-WebRequest fallback
-    let downloaded = if downloaded { true } else {
+    let downloaded = if downloaded {
+        true
+    } else {
         eprintln!("[Git] Trying PowerShell download...");
         let ps_cmd = format!(
             "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '{}' -OutFile '{}' -UseBasicParsing",
@@ -292,10 +318,20 @@ pub fn install_git() -> Result<(), String> {
     };
 
     // Strategy 3: bitsadmin fallback (also built into Windows)
-    let downloaded = if downloaded { true } else {
+    let downloaded = if downloaded {
+        true
+    } else {
         eprintln!("[Git] Trying bitsadmin download...");
         let bits_result = std::process::Command::new("bitsadmin")
-            .args(["/transfer", "GitDownload", "/download", "/priority", "high", url, &installer_str])
+            .args([
+                "/transfer",
+                "GitDownload",
+                "/download",
+                "/priority",
+                "high",
+                url,
+                &installer_str,
+            ])
             .output();
 
         match bits_result {
@@ -310,9 +346,7 @@ pub fn install_git() -> Result<(), String> {
     if downloaded && installer_path.exists() {
         eprintln!("[Git] Launching installer GUI: {}", installer_str);
         // Launch the installer with GUI — it will prompt for UAC itself
-        match std::process::Command::new(&installer_str)
-            .spawn()
-        {
+        match std::process::Command::new(&installer_str).spawn() {
             Ok(_) => {
                 eprintln!("[Git] Installer launched successfully");
                 return Err("INSTALLER_LAUNCHED".to_string());
@@ -368,8 +402,13 @@ pub fn check_dependencies() -> DependencyStatus {
 pub fn install_node_platform() -> Result<(), String> {
     // Strategy 1: winget (built into Windows 11 and Windows 10 1709+)
     let winget = std::process::Command::new("winget")
-        .args(["install", "--id", "OpenJS.NodeJS.LTS",
-               "--accept-source-agreements", "--accept-package-agreements"])
+        .args([
+            "install",
+            "--id",
+            "OpenJS.NodeJS.LTS",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+        ])
         .output();
 
     if let Ok(o) = winget {
@@ -377,9 +416,11 @@ pub fn install_node_platform() -> Result<(), String> {
             refresh_path_from_registry();
             return Ok(());
         }
-        let out_text = format!("{}{}",
+        let out_text = format!(
+            "{}{}",
             String::from_utf8_lossy(&o.stdout),
-            String::from_utf8_lossy(&o.stderr));
+            String::from_utf8_lossy(&o.stderr)
+        );
         if out_text.contains("already installed") {
             refresh_path_from_registry();
             return Ok(());
@@ -387,9 +428,14 @@ pub fn install_node_platform() -> Result<(), String> {
     }
 
     // Strategy 2: Download .msi installer via PowerShell and run silently
-    let arch = if cfg!(target_arch = "x86_64") { "x64" } else { "arm64" };
+    let arch = if cfg!(target_arch = "x86_64") {
+        "x64"
+    } else {
+        "arm64"
+    };
     let url = format!(
-        "https://nodejs.org/dist/v22.14.0/node-v22.14.0-{}.msi", arch
+        "https://nodejs.org/dist/v22.14.0/node-v22.14.0-{}.msi",
+        arch
     );
     let msi_path = super::temp_dir().join("node-installer.msi");
     let msi_str = msi_path.to_string_lossy().to_string();
@@ -449,18 +495,31 @@ pub fn install_claude_platform() -> Result<(), String> {
         }
         Ok(o) => {
             let stderr = String::from_utf8_lossy(&o.stderr);
-            Err(format!("npm install failed: {}. Run: npm install -g @anthropic-ai/claude-code", stderr.chars().take(200).collect::<String>()))
+            Err(format!(
+                "npm install failed: {}. Run: npm install -g @anthropic-ai/claude-code",
+                stderr.chars().take(200).collect::<String>()
+            ))
         }
-        Err(e) => Err(format!("Could not run npm: {}. Ensure Node.js is installed and restart Operon.", e)),
+        Err(e) => Err(format!(
+            "Could not run npm: {}. Ensure Node.js is installed and restart Operon.",
+            e
+        )),
     }
 }
 
 pub fn find_winget() -> Option<String> {
     let out = std::process::Command::new("where.exe")
         .arg("winget")
-        .output().ok()?;
+        .output()
+        .ok()?;
     if out.status.success() {
-        Some(String::from_utf8_lossy(&out.stdout).lines().next()?.trim().to_string())
+        Some(
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()?
+                .trim()
+                .to_string(),
+        )
     } else {
         None
     }
@@ -485,17 +544,25 @@ pub fn find_python() -> Option<String> {
 /// Install Python via winget.
 pub fn install_python() -> Result<(), String> {
     let winget = std::process::Command::new("winget")
-        .args(["install", "--id", "Python.Python.3.12", "-e",
-               "--accept-source-agreements", "--accept-package-agreements"])
+        .args([
+            "install",
+            "--id",
+            "Python.Python.3.12",
+            "-e",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+        ])
         .output();
 
     if let Ok(o) = winget {
         if o.status.success() {
             return Ok(());
         }
-        let out_text = format!("{}{}",
+        let out_text = format!(
+            "{}{}",
             String::from_utf8_lossy(&o.stdout),
-            String::from_utf8_lossy(&o.stderr));
+            String::from_utf8_lossy(&o.stderr)
+        );
         if out_text.contains("already installed") {
             return Ok(());
         }
@@ -518,14 +585,22 @@ pub fn has_openssh() -> bool {
 pub fn install_openssh() -> Result<(), String> {
     // Strategy 1: winget (works on Windows 11)
     let winget = std::process::Command::new("winget")
-        .args(["install", "--id", "Microsoft.OpenSSH.Beta", "-e",
-               "--accept-source-agreements", "--accept-package-agreements"])
+        .args([
+            "install",
+            "--id",
+            "Microsoft.OpenSSH.Beta",
+            "-e",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+        ])
         .output();
 
     if let Ok(o) = winget {
-        let out_text = format!("{}{}",
+        let out_text = format!(
+            "{}{}",
             String::from_utf8_lossy(&o.stdout),
-            String::from_utf8_lossy(&o.stderr));
+            String::from_utf8_lossy(&o.stderr)
+        );
         if o.status.success() || out_text.contains("already installed") {
             return Ok(());
         }
@@ -533,7 +608,10 @@ pub fn install_openssh() -> Result<(), String> {
 
     // Strategy 2: PowerShell Add-WindowsCapability (requires admin)
     let ps = std::process::Command::new("powershell.exe")
-        .args(["-Command", "Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0"])
+        .args([
+            "-Command",
+            "Add-WindowsCapability -Online -Name OpenSSH.Client~~~~0.0.1.0",
+        ])
         .output();
 
     if let Ok(o) = ps {
@@ -556,8 +634,12 @@ pub fn has_uv() -> bool {
 pub fn install_uv() -> Result<(), String> {
     // Strategy 1: PowerShell standalone installer (recommended, no Python needed)
     let ps = std::process::Command::new("powershell.exe")
-        .args(["-ExecutionPolicy", "ByPass", "-Command",
-               "irm https://astral.sh/uv/install.ps1 | iex"])
+        .args([
+            "-ExecutionPolicy",
+            "ByPass",
+            "-Command",
+            "irm https://astral.sh/uv/install.ps1 | iex",
+        ])
         .output();
 
     if let Ok(o) = ps {
@@ -568,14 +650,22 @@ pub fn install_uv() -> Result<(), String> {
 
     // Strategy 2: winget
     let winget = std::process::Command::new("winget")
-        .args(["install", "--id", "astral-sh.uv", "-e",
-               "--accept-source-agreements", "--accept-package-agreements"])
+        .args([
+            "install",
+            "--id",
+            "astral-sh.uv",
+            "-e",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+        ])
         .output();
 
     if let Ok(o) = winget {
-        let out_text = format!("{}{}",
+        let out_text = format!(
+            "{}{}",
             String::from_utf8_lossy(&o.stdout),
-            String::from_utf8_lossy(&o.stderr));
+            String::from_utf8_lossy(&o.stderr)
+        );
         if o.status.success() || out_text.contains("already installed") {
             return Ok(());
         }
@@ -585,7 +675,9 @@ pub fn install_uv() -> Result<(), String> {
     if find_python().is_some() {
         let pip = shell_exec("pip install uv").output();
         if let Ok(o) = pip {
-            if o.status.success() { return Ok(()); }
+            if o.status.success() {
+                return Ok(());
+            }
         }
     }
 
@@ -606,15 +698,16 @@ pub fn has_reportlab() -> bool {
 
 /// Install reportlab via pip.
 pub fn install_reportlab() -> Result<(), String> {
-    let python = find_python()
-        .ok_or("Python is not installed — cannot install reportlab.")?;
+    let python = find_python().ok_or("Python is not installed — cannot install reportlab.")?;
 
     // Strategy 1: pip install --user
     if let Ok(o) = std::process::Command::new(&python)
         .args(["-m", "pip", "install", "reportlab", "--user", "--quiet"])
         .output()
     {
-        if o.status.success() { return Ok(()); }
+        if o.status.success() {
+            return Ok(());
+        }
     }
 
     // Strategy 2: pip install (no --user)
@@ -622,7 +715,9 @@ pub fn install_reportlab() -> Result<(), String> {
         .args(["-m", "pip", "install", "reportlab", "--quiet"])
         .output()
     {
-        if o.status.success() { return Ok(()); }
+        if o.status.success() {
+            return Ok(());
+        }
     }
 
     Err("reportlab could not be installed. Run: pip install reportlab".to_string())
@@ -654,7 +749,7 @@ pub fn is_hidden(path: &std::path::Path) -> bool {
 pub fn build_menu(
     app: &tauri::App,
 ) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
-    use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
     let file_submenu = SubmenuBuilder::new(app, "File")
         .item(&PredefinedMenuItem::close_window(app, None)?)
@@ -675,12 +770,9 @@ pub fn build_menu(
         .item(&PredefinedMenuItem::fullscreen(app, None)?)
         .build()?;
 
-    let help_item = MenuItemBuilder::with_id("open-help", "Operon Help")
-        .build(app)?;
+    let help_item = MenuItemBuilder::with_id("open-help", "Operon Help").build(app)?;
 
-    let help_submenu = SubmenuBuilder::new(app, "Help")
-        .item(&help_item)
-        .build()?;
+    let help_submenu = SubmenuBuilder::new(app, "Help").item(&help_item).build()?;
 
     let menu = MenuBuilder::new(app)
         .item(&file_submenu)

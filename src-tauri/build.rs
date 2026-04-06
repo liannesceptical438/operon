@@ -15,7 +15,10 @@ fn main() {
         merge_protocols(root_protocols, dst);
     }
 
-    println!("cargo:warning=Bundled {} protocol directories", count_subdirs(dst));
+    println!(
+        "cargo:warning=Bundled {} protocol directories",
+        count_subdirs(dst)
+    );
 
     // Re-run build script if protocols change
     println!("cargo:rerun-if-changed=../protocols");

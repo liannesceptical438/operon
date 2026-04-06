@@ -90,9 +90,7 @@ impl SettingsManager {
 }
 
 #[tauri::command]
-pub async fn get_settings(
-    state: tauri::State<'_, SettingsManager>,
-) -> Result<AppSettings, String> {
+pub async fn get_settings(state: tauri::State<'_, SettingsManager>) -> Result<AppSettings, String> {
     let settings = state.settings.lock().map_err(|e| e.to_string())?;
     Ok(settings.clone())
 }
@@ -125,7 +123,8 @@ pub(crate) struct DictationProcess {
     pub(crate) pid: u32,
 }
 
-pub(crate) static DICTATION_PROCESS: std::sync::Mutex<Option<DictationProcess>> = std::sync::Mutex::new(None);
+pub(crate) static DICTATION_PROCESS: std::sync::Mutex<Option<DictationProcess>> =
+    std::sync::Mutex::new(None);
 
 /// Stop the currently running dictation process.
 #[tauri::command]

@@ -24,20 +24,20 @@ pub struct AuthStatus {
 /// Persistent metadata about a Claude session, saved to ~/.operon/sessions/
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SessionMetadata {
-    pub session_id: String,           // Our frontend UUID
+    pub session_id: String,                // Our frontend UUID
     pub claude_session_id: Option<String>, // Claude CLI's internal session ID (for --resume)
-    pub project_path: String,         // Local or remote working directory
-    pub profile_id: Option<String>,   // SSH profile ID if remote
-    pub remote_path: Option<String>,  // Remote path if remote
-    pub mode: String,                 // "agent", "plan", "ask"
+    pub project_path: String,              // Local or remote working directory
+    pub profile_id: Option<String>,        // SSH profile ID if remote
+    pub remote_path: Option<String>,       // Remote path if remote
+    pub mode: String,                      // "agent", "plan", "ask"
     pub model: Option<String>,
-    pub created_at: u64,              // Unix timestamp ms
-    pub last_activity: u64,           // Unix timestamp ms
-    pub status: String,               // "running", "completed", "failed"
-    pub use_terminal: bool,           // Whether this used terminal mode
-    pub terminal_id: Option<String>,  // Terminal ID if terminal mode
+    pub created_at: u64,             // Unix timestamp ms
+    pub last_activity: u64,          // Unix timestamp ms
+    pub status: String,              // "running", "completed", "failed"
+    pub use_terminal: bool,          // Whether this used terminal mode
+    pub terminal_id: Option<String>, // Terminal ID if terminal mode
     #[serde(default)]
-    pub name: Option<String>,         // Human-readable session name (from first prompt)
+    pub name: Option<String>, // Human-readable session name (from first prompt)
 }
 
 /// Status of a session's output files on the filesystem
@@ -46,8 +46,8 @@ pub struct SessionFileStatus {
     pub session_id: String,
     pub output_exists: bool,
     pub done_exists: bool,
-    pub is_running: bool,       // output exists but done doesn't
-    pub is_completed: bool,     // both exist
+    pub is_running: bool,   // output exists but done doesn't
+    pub is_completed: bool, // both exist
 }
 
 pub struct ClaudeSession {
@@ -207,9 +207,12 @@ fn operon_node_dir() -> std::path::PathBuf {
 /// Get the path to the Operon-managed `node` binary (if it exists).
 fn operon_node_bin() -> Option<String> {
     let bin = operon_node_dir().join("bin").join("node");
-    if bin.exists() { Some(bin.to_string_lossy().to_string()) } else { None }
+    if bin.exists() {
+        Some(bin.to_string_lossy().to_string())
+    } else {
+        None
+    }
 }
-
 
 /// Install Node.js using platform-appropriate methods.
 /// Delegates to the platform abstraction layer which handles:
@@ -232,20 +235,29 @@ pub async fn install_node() -> Result<(), String> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InstallProgress {
-    pub step: String,       // e.g. "xcode", "homebrew", "node", "gh", "claude", "done"
-    pub status: String,     // "starting", "downloading", "installing", "waiting", "complete", "skipped", "error"
+    pub step: String,   // e.g. "xcode", "homebrew", "node", "gh", "claude", "done"
+    pub status: String, // "starting", "downloading", "installing", "waiting", "complete", "skipped", "error"
     pub message: String,
-    pub percent: u8,        // 0-100 within this phase
+    pub percent: u8, // 0-100 within this phase
 }
 
-fn emit_install_progress(app: &tauri::AppHandle, step: &str, status: &str, message: &str, percent: u8) {
+fn emit_install_progress(
+    app: &tauri::AppHandle,
+    step: &str,
+    status: &str,
+    message: &str,
+    percent: u8,
+) {
     use tauri::Emitter;
-    let _ = app.emit("install-progress", InstallProgress {
-        step: step.to_string(),
-        status: status.to_string(),
-        message: message.to_string(),
-        percent,
-    });
+    let _ = app.emit(
+        "install-progress",
+        InstallProgress {
+            step: step.to_string(),
+            status: status.to_string(),
+            message: message.to_string(),
+            percent,
+        },
+    );
 }
 
 /// Phase 1: Xcode CLI Tools (macOS only).
@@ -254,44 +266,94 @@ fn emit_install_progress(app: &tauri::AppHandle, step: &str, status: &str, messa
 #[tauri::command]
 pub async fn install_phase_xcode(app: tauri::AppHandle) -> Result<bool, String> {
     if !crate::platform::requires_xcode() {
-        emit_install_progress(&app, "xcode", "skipped", "Not required on this platform", 100);
+        emit_install_progress(
+            &app,
+            "xcode",
+            "skipped",
+            "Not required on this platform",
+            100,
+        );
         return Ok(true);
     }
 
     let already = login_shell_cmd("xcode-select -p")
-        .output().map(|o| o.status.success()).unwrap_or(false);
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
 
     if already {
-        emit_install_progress(&app, "xcode", "skipped", "Xcode Command Line Tools already installed", 100);
+        emit_install_progress(
+            &app,
+            "xcode",
+            "skipped",
+            "Xcode Command Line Tools already installed",
+            100,
+        );
         return Ok(true);
     }
 
-    emit_install_progress(&app, "xcode", "starting", "Installing Xcode Command Line Tools...", 5);
+    emit_install_progress(
+        &app,
+        "xcode",
+        "starting",
+        "Installing Xcode Command Line Tools...",
+        5,
+    );
 
     // Delegate to platform layer which calls xcode-select --install
     if let Err(e) = crate::platform::install_xcode_cli_platform() {
-        emit_install_progress(&app, "xcode", "error", &format!("Xcode install failed: {}", e), 100);
+        emit_install_progress(
+            &app,
+            "xcode",
+            "error",
+            &format!("Xcode install failed: {}", e),
+            100,
+        );
         return Ok(false);
     }
 
-    emit_install_progress(&app, "xcode", "waiting",
-        "A macOS dialog will appear — click Install and wait for it to finish.", 10);
+    emit_install_progress(
+        &app,
+        "xcode",
+        "waiting",
+        "A macOS dialog will appear — click Install and wait for it to finish.",
+        10,
+    );
 
     // Poll for up to 40 minutes (slow internet scenario)
     for i in 0..480_u32 {
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         let check = login_shell_cmd("xcode-select -p")
-            .output().map(|o| o.status.success()).unwrap_or(false);
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
         if check {
-            emit_install_progress(&app, "xcode", "complete", "Xcode Command Line Tools installed!", 100);
+            emit_install_progress(
+                &app,
+                "xcode",
+                "complete",
+                "Xcode Command Line Tools installed!",
+                100,
+            );
             return Ok(true);
         }
         let pct = 10 + std::cmp::min((i * 85 / 480) as u8, 85);
-        emit_install_progress(&app, "xcode", "waiting", "Waiting for Xcode installer...", pct);
+        emit_install_progress(
+            &app,
+            "xcode",
+            "waiting",
+            "Waiting for Xcode installer...",
+            pct,
+        );
     }
 
-    emit_install_progress(&app, "xcode", "error",
-        "Xcode install timed out — it may still be running in the background.", 100);
+    emit_install_progress(
+        &app,
+        "xcode",
+        "error",
+        "Xcode install timed out — it may still be running in the background.",
+        100,
+    );
     Ok(false)
 }
 
@@ -310,8 +372,13 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
     #[cfg(target_os = "windows")]
     {
         if crate::platform::find_git_bash_path().is_none() {
-            emit_install_progress(&app, "git", "installing",
-                "Downloading Git for Windows installer...", 2);
+            emit_install_progress(
+                &app,
+                "git",
+                "installing",
+                "Downloading Git for Windows installer...",
+                2,
+            );
 
             match crate::platform::install_git_platform() {
                 Ok(()) => {
@@ -324,13 +391,26 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
                     all_ok = false;
                 }
                 Err(e) if e == "BROWSER_OPENED" => {
-                    emit_install_progress(&app, "git", "error",
-                        "Download page opened — install Git, then click Re-check below.", 10);
+                    emit_install_progress(
+                        &app,
+                        "git",
+                        "error",
+                        "Download page opened — install Git, then click Re-check below.",
+                        10,
+                    );
                     all_ok = false;
                 }
                 Err(e) => {
-                    emit_install_progress(&app, "git", "error",
-                        &format!("Git install failed: {}. Download from https://git-scm.com", e), 10);
+                    emit_install_progress(
+                        &app,
+                        "git",
+                        "error",
+                        &format!(
+                            "Git install failed: {}. Download from https://git-scm.com",
+                            e
+                        ),
+                        10,
+                    );
                     all_ok = false;
                 }
             }
@@ -348,28 +428,52 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
     let mut pkg_mgr = crate::platform::find_package_manager();
 
     if pkg_mgr.is_none() {
-        emit_install_progress(&app, "homebrew", "installing",
-            "Installing package manager...", 5);
+        emit_install_progress(
+            &app,
+            "homebrew",
+            "installing",
+            "Installing package manager...",
+            5,
+        );
 
         match crate::platform::install_homebrew_platform() {
             Ok(path) => {
                 pkg_mgr = Some(path);
-                emit_install_progress(&app, "homebrew", "complete", "Package manager installed!", 45);
+                emit_install_progress(
+                    &app,
+                    "homebrew",
+                    "complete",
+                    "Package manager installed!",
+                    45,
+                );
             }
             Err(e) => {
                 eprintln!("[Package Manager] Install failed: {}", e);
-                emit_install_progress(&app, "homebrew", "error",
-                    &format!("Package manager install failed: {}", e), 45);
+                emit_install_progress(
+                    &app,
+                    "homebrew",
+                    "error",
+                    &format!("Package manager install failed: {}", e),
+                    45,
+                );
                 // Not fatal — Node.js can still be installed via tarball
             }
         }
     } else {
-        emit_install_progress(&app, "homebrew", "skipped", "Package manager already installed", 45);
+        emit_install_progress(
+            &app,
+            "homebrew",
+            "skipped",
+            "Package manager already installed",
+            45,
+        );
     }
 
     // ── Node.js (50-80%) ──
     let has_node = login_shell_cmd("node --version")
-        .output().map(|o| o.status.success()).unwrap_or(false)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
         || operon_node_bin().is_some();
 
     if !has_node {
@@ -381,16 +485,28 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
             }
             Err(e) => {
                 eprintln!("[Node] Install failed: {}", e);
-                emit_install_progress(&app, "node", "error",
-                    "Node.js could not be installed automatically.", 80);
+                emit_install_progress(
+                    &app,
+                    "node",
+                    "error",
+                    "Node.js could not be installed automatically.",
+                    80,
+                );
                 all_ok = false;
             }
         }
     } else {
-        let ver = login_shell_cmd("node --version").output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
-        emit_install_progress(&app, "node", "skipped",
-            &format!("Node.js already installed ({})", ver), 80);
+        let ver = login_shell_cmd("node --version")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
+        emit_install_progress(
+            &app,
+            "node",
+            "skipped",
+            &format!("Node.js already installed ({})", ver),
+            80,
+        );
     }
 
     // ── GitHub CLI (80-100%) ──
@@ -404,13 +520,21 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
         #[cfg(target_os = "windows")]
         {
             let winget = std::process::Command::new("winget")
-                .args(["install", "--id", "GitHub.cli", "-e",
-                       "--accept-source-agreements", "--accept-package-agreements"])
+                .args([
+                    "install",
+                    "--id",
+                    "GitHub.cli",
+                    "-e",
+                    "--accept-source-agreements",
+                    "--accept-package-agreements",
+                ])
                 .output();
             if let Ok(o) = winget {
-                let out_text = format!("{}{}",
+                let out_text = format!(
+                    "{}{}",
                     String::from_utf8_lossy(&o.stdout),
-                    String::from_utf8_lossy(&o.stderr));
+                    String::from_utf8_lossy(&o.stderr)
+                );
                 if o.status.success() || out_text.contains("already installed") {
                     gh_installed = true;
                 }
@@ -420,7 +544,9 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
         // Strategy 2: Package manager (Homebrew on macOS, apt on Linux)
         if !gh_installed {
             if let Some(ref mgr) = pkg_mgr {
-                let output = std::process::Command::new(mgr).args(["install", "gh"]).output();
+                let output = std::process::Command::new(mgr)
+                    .args(["install", "gh"])
+                    .output();
                 if let Ok(o) = output {
                     let stderr = String::from_utf8_lossy(&o.stderr);
                     if o.status.success() || stderr.contains("already installed") {
@@ -436,8 +562,13 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
             emit_install_progress(&app, "gh", "complete", "GitHub CLI installed!", 90);
         } else {
             eprintln!("[gh] All install strategies failed");
-            emit_install_progress(&app, "gh", "error",
-                "GitHub CLI could not be installed (optional — you can install it later).", 90);
+            emit_install_progress(
+                &app,
+                "gh",
+                "error",
+                "GitHub CLI could not be installed (optional — you can install it later).",
+                90,
+            );
             // gh is optional — don't fail the whole phase
         }
     } else {
@@ -450,8 +581,13 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
     #[cfg(target_os = "windows")]
     {
         if crate::platform::find_python().is_none() {
-            emit_install_progress(&app, "python", "installing",
-                "Installing Python (required for PDF reports and research tools)...", 81);
+            emit_install_progress(
+                &app,
+                "python",
+                "installing",
+                "Installing Python (required for PDF reports and research tools)...",
+                81,
+            );
 
             match crate::platform::install_python_platform() {
                 Ok(()) => {
@@ -459,8 +595,13 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
                 }
                 Err(e) => {
                     eprintln!("[Python] Install failed: {}", e);
-                    emit_install_progress(&app, "python", "error",
-                        "Python could not be installed. Install from https://python.org/downloads", 84);
+                    emit_install_progress(
+                        &app,
+                        "python",
+                        "error",
+                        "Python could not be installed. Install from https://python.org/downloads",
+                        84,
+                    );
                     // Not fatal — user can install manually
                 }
             }
@@ -474,12 +615,17 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
     #[cfg(target_os = "windows")]
     {
         // Check both native OpenSSH and Git Bash's ssh
-        let has_ssh = crate::platform::has_openssh()
-            || crate::platform::find_git_bash_path().is_some(); // Git Bash includes ssh
+        let has_ssh =
+            crate::platform::has_openssh() || crate::platform::find_git_bash_path().is_some(); // Git Bash includes ssh
 
         if !has_ssh {
-            emit_install_progress(&app, "openssh", "installing",
-                "Installing OpenSSH client (for remote connections)...", 85);
+            emit_install_progress(
+                &app,
+                "openssh",
+                "installing",
+                "Installing OpenSSH client (for remote connections)...",
+                85,
+            );
 
             match crate::platform::install_openssh_platform() {
                 Ok(()) => {
@@ -493,7 +639,13 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
                 }
             }
         } else {
-            emit_install_progress(&app, "openssh", "skipped", "SSH available (via OpenSSH or Git Bash)", 87);
+            emit_install_progress(
+                &app,
+                "openssh",
+                "skipped",
+                "SSH available (via OpenSSH or Git Bash)",
+                87,
+            );
         }
     }
 
@@ -503,8 +655,13 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
     #[cfg(target_os = "windows")]
     {
         if !crate::platform::has_uv() {
-            emit_install_progress(&app, "uv", "installing",
-                "Installing uv (Python package manager for research tools)...", 88);
+            emit_install_progress(
+                &app,
+                "uv",
+                "installing",
+                "Installing uv (Python package manager for research tools)...",
+                88,
+            );
 
             match crate::platform::install_uv_platform() {
                 Ok(()) => {
@@ -512,8 +669,13 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
                 }
                 Err(e) => {
                     eprintln!("[uv] Install failed: {}", e);
-                    emit_install_progress(&app, "uv", "error",
-                        "uv could not be installed. Install from https://docs.astral.sh/uv/", 90);
+                    emit_install_progress(
+                        &app,
+                        "uv",
+                        "error",
+                        "uv could not be installed. Install from https://docs.astral.sh/uv/",
+                        90,
+                    );
                 }
             }
         } else {
@@ -525,26 +687,50 @@ pub async fn install_phase_tools(app: tauri::AppHandle) -> Result<bool, String> 
     let has_reportlab = crate::platform::has_reportlab();
 
     if !has_reportlab {
-        emit_install_progress(&app, "reportlab", "installing", "Installing PDF report library (reportlab)...", 92);
+        emit_install_progress(
+            &app,
+            "reportlab",
+            "installing",
+            "Installing PDF report library (reportlab)...",
+            92,
+        );
 
         match crate::platform::install_reportlab_platform() {
             Ok(()) => {
                 emit_install_progress(&app, "reportlab", "complete", "reportlab installed!", 100);
             }
             Err(_e) => {
-                emit_install_progress(&app, "reportlab", "error",
-                    "reportlab could not be installed (Report mode will install it on first use).", 100);
+                emit_install_progress(
+                    &app,
+                    "reportlab",
+                    "error",
+                    "reportlab could not be installed (Report mode will install it on first use).",
+                    100,
+                );
                 // Don't fail the whole phase — report mode has its own fallback
             }
         }
     } else {
-        emit_install_progress(&app, "reportlab", "skipped", "reportlab already installed", 100);
+        emit_install_progress(
+            &app,
+            "reportlab",
+            "skipped",
+            "reportlab already installed",
+            100,
+        );
     }
 
-    emit_install_progress(&app, "done",
+    emit_install_progress(
+        &app,
+        "done",
         if all_ok { "complete" } else { "error" },
-        if all_ok { "All tools installed!" } else { "Some items need attention" },
-        100);
+        if all_ok {
+            "All tools installed!"
+        } else {
+            "Some items need attention"
+        },
+        100,
+    );
 
     Ok(all_ok)
 }
@@ -575,15 +761,27 @@ pub async fn install_phase_claude(app: tauri::AppHandle) -> Result<bool, String>
     let has_claude = crate::platform::check_tool("claude").is_some();
 
     if has_claude {
-        let ver = login_shell_cmd("claude --version").output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
-        emit_install_progress(&app, "claude", "skipped",
-            &format!("Claude Code already installed ({})", ver), 100);
+        let ver = login_shell_cmd("claude --version")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
+        emit_install_progress(
+            &app,
+            "claude",
+            "skipped",
+            &format!("Claude Code already installed ({})", ver),
+            100,
+        );
         return Ok(true);
     }
 
-    emit_install_progress(&app, "claude", "installing",
-        "Installing Claude Code...", 20);
+    emit_install_progress(
+        &app,
+        "claude",
+        "installing",
+        "Installing Claude Code...",
+        20,
+    );
 
     match crate::platform::install_claude_platform() {
         Ok(()) => {
@@ -661,11 +859,25 @@ echo "REPORTLAB:$(python3 -c 'import reportlab; print(reportlab.Version)' 2>/dev
     let result = super::ssh::ssh_exec(&profile, check_script)
         .map_err(|e| format!("SSH check failed: {}", e))?;
 
-    let node_line = result.lines().find(|l| l.starts_with("NODE:")).unwrap_or("NODE:MISSING");
-    let npm_line = result.lines().find(|l| l.starts_with("NPM:")).unwrap_or("NPM:MISSING");
-    let claude_line = result.lines().find(|l| l.starts_with("CLAUDE:")).unwrap_or("CLAUDE:MISSING");
-    let reportlab_line = result.lines().find(|l| l.starts_with("REPORTLAB:")).unwrap_or("REPORTLAB:MISSING");
-    let _reportlab_ver = reportlab_line.strip_prefix("REPORTLAB:").unwrap_or("MISSING");
+    let node_line = result
+        .lines()
+        .find(|l| l.starts_with("NODE:"))
+        .unwrap_or("NODE:MISSING");
+    let npm_line = result
+        .lines()
+        .find(|l| l.starts_with("NPM:"))
+        .unwrap_or("NPM:MISSING");
+    let claude_line = result
+        .lines()
+        .find(|l| l.starts_with("CLAUDE:"))
+        .unwrap_or("CLAUDE:MISSING");
+    let reportlab_line = result
+        .lines()
+        .find(|l| l.starts_with("REPORTLAB:"))
+        .unwrap_or("REPORTLAB:MISSING");
+    let _reportlab_ver = reportlab_line
+        .strip_prefix("REPORTLAB:")
+        .unwrap_or("MISSING");
     // reportlab status is logged but not yet surfaced in DependencyStatus
 
     let node_ver = node_line.strip_prefix("NODE:").unwrap_or("MISSING");
@@ -675,11 +887,23 @@ echo "REPORTLAB:$(python3 -c 'import reportlab; print(reportlab.Version)' 2>/dev
     Ok(DependencyStatus {
         xcode_cli: true, // Not applicable for remote
         node: node_ver != "MISSING",
-        node_version: if node_ver != "MISSING" { Some(node_ver.to_string()) } else { None },
+        node_version: if node_ver != "MISSING" {
+            Some(node_ver.to_string())
+        } else {
+            None
+        },
         npm: npm_ver != "MISSING",
-        npm_version: if npm_ver != "MISSING" { Some(npm_ver.to_string()) } else { None },
+        npm_version: if npm_ver != "MISSING" {
+            Some(npm_ver.to_string())
+        } else {
+            None
+        },
         claude_code: claude_ver != "MISSING",
-        claude_version: if claude_ver != "MISSING" && claude_ver != "FOUND" { Some(claude_ver.to_string()) } else { None },
+        claude_version: if claude_ver != "MISSING" && claude_ver != "FOUND" {
+            Some(claude_ver.to_string())
+        } else {
+            None
+        },
         git_bash: true, // Not applicable for remote (Linux servers)
     })
 }
@@ -778,7 +1002,10 @@ echo "AUTH:ok"
         Ok("authenticated".to_string())
     } else if result.contains("AUTH:expired") {
         // Credential files exist but are expired/invalid
-        Ok(format!("not_authenticated:credentials_expired:{}", result.trim()))
+        Ok(format!(
+            "not_authenticated:credentials_expired:{}",
+            result.trim()
+        ))
     } else {
         // No credentials found at all
         Ok(format!("not_authenticated:{}", result.trim()))
@@ -898,7 +1125,7 @@ fi
          Then click Re-check in Operon.\n\n\
          Server output:\n{}",
         result.lines().take(20).collect::<Vec<_>>().join("\n")
-    ))
+    ));
 }
 
 // --- Authentication ---
@@ -915,17 +1142,13 @@ pub async fn store_api_key(
 }
 
 #[tauri::command]
-pub async fn get_api_key(
-    state: tauri::State<'_, ClaudeManager>,
-) -> Result<Option<String>, String> {
+pub async fn get_api_key(state: tauri::State<'_, ClaudeManager>) -> Result<Option<String>, String> {
     let api_key = state.api_key.lock().map_err(|e| e.to_string())?;
     Ok(api_key.clone())
 }
 
 #[tauri::command]
-pub async fn delete_api_key(
-    state: tauri::State<'_, ClaudeManager>,
-) -> Result<(), String> {
+pub async fn delete_api_key(state: tauri::State<'_, ClaudeManager>) -> Result<(), String> {
     let mut api_key = state.api_key.lock().map_err(|e| e.to_string())?;
     *api_key = None;
     Ok(())
@@ -939,7 +1162,9 @@ pub async fn delete_api_key(
 pub async fn check_oauth_status() -> Result<bool, String> {
     // Fast path: scan ~/.claude/ for any file that looks like credentials/auth
     {
-        let claude_dir = crate::platform::home_dir().unwrap_or_default().join(".claude");
+        let claude_dir = crate::platform::home_dir()
+            .unwrap_or_default()
+            .join(".claude");
         if claude_dir.is_dir() {
             if let Ok(entries) = std::fs::read_dir(&claude_dir) {
                 for entry in entries.flatten() {
@@ -963,14 +1188,13 @@ pub async fn check_oauth_status() -> Result<bool, String> {
     }
 
     // Slow path: actually run claude through a login shell to test auth
-    let mut auth_cmd = crate::platform::shell_exec_async("claude -p 'ping' --max-turns 1 --output-format json 2>/dev/null");
+    let mut auth_cmd = crate::platform::shell_exec_async(
+        "claude -p 'ping' --max-turns 1 --output-format json 2>/dev/null",
+    );
     if let Some(git_bash_path) = crate::platform::find_git_bash_path() {
         auth_cmd.env("CLAUDE_CODE_GIT_BASH_PATH", &git_bash_path);
     }
-    let output = auth_cmd
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
+    let output = auth_cmd.output().await.map_err(|e| e.to_string())?;
 
     // If claude exits 0 and produces output, auth is working
     if output.status.success() {
@@ -998,8 +1222,7 @@ pub async fn launch_claude_login() -> Result<String, String> {
 
     // --- Strategy 1: Run `claude login` directly and capture the OAuth URL ---
     // Find the actual claude binary path for reliable execution
-    let claude_path = crate::platform::check_tool("claude")
-        .map(|(path, _)| path);
+    let claude_path = crate::platform::check_tool("claude").map(|(path, _)| path);
 
     let augmented = crate::platform::augmented_path();
 
@@ -1043,7 +1266,11 @@ pub async fn launch_claude_login() -> Result<String, String> {
                     // Direct URL line
                     if trimmed.starts_with("https://") {
                         let url = trimmed.split_whitespace().next().unwrap_or(trimmed);
-                        if url.contains("oauth") || url.contains("claude.ai") || url.contains("anthropic") || url.contains("login") {
+                        if url.contains("oauth")
+                            || url.contains("claude.ai")
+                            || url.contains("anthropic")
+                            || url.contains("login")
+                        {
                             return Some(url.to_string());
                         }
                     }
@@ -1051,7 +1278,11 @@ pub async fn launch_claude_login() -> Result<String, String> {
                     if let Some(url_start) = trimmed.find("https://") {
                         let url_part = &trimmed[url_start..];
                         let url = url_part.split_whitespace().next().unwrap_or(url_part);
-                        if url.contains("claude.ai") || url.contains("oauth") || url.contains("anthropic") || url.contains("login") {
+                        if url.contains("claude.ai")
+                            || url.contains("oauth")
+                            || url.contains("anthropic")
+                            || url.contains("login")
+                        {
                             return Some(url.to_string());
                         }
                     }
@@ -1111,7 +1342,8 @@ pub async fn launch_claude_login() -> Result<String, String> {
             all_output.push_str(&err);
 
             // Use the first URL found from either stream
-            let found_url: Option<String> = out_url.or(err_url).or_else(|| extract_url(&all_output));
+            let found_url: Option<String> =
+                out_url.or(err_url).or_else(|| extract_url(&all_output));
 
             if let Some(ref url) = found_url {
                 let _ = crate::platform::open_url(url);
@@ -1120,7 +1352,10 @@ pub async fn launch_claude_login() -> Result<String, String> {
                 }
             }
 
-            eprintln!("[Claude Login] Output: {}", all_output.chars().take(500).collect::<String>());
+            eprintln!(
+                "[Claude Login] Output: {}",
+                all_output.chars().take(500).collect::<String>()
+            );
         });
 
         // Give the process a moment to output the URL
@@ -1128,7 +1363,10 @@ pub async fn launch_claude_login() -> Result<String, String> {
 
         let found = url_found.lock().map(|u| !u.is_empty()).unwrap_or(false);
         if found {
-            return Ok("Login page opened in your browser. Complete the sign-in, then click Verify below.".to_string());
+            return Ok(
+                "Login page opened in your browser. Complete the sign-in, then click Verify below."
+                    .to_string(),
+            );
         }
     }
 
@@ -1136,8 +1374,14 @@ pub async fn launch_claude_login() -> Result<String, String> {
     eprintln!("[Claude Login] Direct approach failed, trying external terminal");
     let result = crate::platform::open_terminal_with_command("claude login");
     match result {
-        Ok(()) => Ok("Terminal opened with Claude login. Complete sign-in there, then click Verify below.".to_string()),
-        Err(e) => Err(format!("Failed to launch login: {}. Try running 'claude login' manually in PowerShell.", e)),
+        Ok(()) => Ok(
+            "Terminal opened with Claude login. Complete sign-in there, then click Verify below."
+                .to_string(),
+        ),
+        Err(e) => Err(format!(
+            "Failed to launch login: {}. Try running 'claude login' manually in PowerShell.",
+            e
+        )),
     }
 }
 
@@ -1207,7 +1451,10 @@ pub async fn start_claude_session(
     };
 
     let mode = mode.unwrap_or_else(|| "agent".to_string());
-    eprintln!("[operon] start_claude_session: mode='{}', resume={:?}, max_turns={:?}", mode, resume_session, max_turns);
+    eprintln!(
+        "[operon] start_claude_session: mode='{}', resume={:?}, max_turns={:?}",
+        mode, resume_session, max_turns
+    );
 
     // --- Check for existing plan files in the target directory ---
     // This gives Claude context about previous planning sessions in this folder.
@@ -1215,10 +1462,7 @@ pub async fn start_claude_session(
         // Remote: read implementation_plan.md via SSH
         let profile = {
             let profiles = ssh_state.profiles.lock().map_err(|e| e.to_string())?;
-            profiles
-                .iter()
-                .find(|p| p.id == ctx.profile_id)
-                .cloned()
+            profiles.iter().find(|p| p.id == ctx.profile_id).cloned()
         };
         if let Some(prof) = profile {
             let check_cmd = format!(
@@ -1299,20 +1543,48 @@ pub async fn start_claude_session(
         let mut y = 1970i64;
         let mut remaining = days as i64;
         loop {
-            let days_in_year = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 { 366 } else { 365 };
-            if remaining < days_in_year { break; }
+            let days_in_year = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+                366
+            } else {
+                365
+            };
+            if remaining < days_in_year {
+                break;
+            }
             remaining -= days_in_year;
             y += 1;
         }
         let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-        let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let month_days = [
+            31,
+            if leap { 29 } else { 28 },
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31,
+        ];
         let mut m = 0usize;
         for &md in &month_days {
-            if remaining < md as i64 { break; }
+            if remaining < md as i64 {
+                break;
+            }
             remaining -= md as i64;
             m += 1;
         }
-        format!("{:04}-{:02}-{:02} {:02}:{:02} UTC", y, m + 1, remaining + 1, hours, minutes)
+        format!(
+            "{:04}-{:02}-{:02} {:02}:{:02} UTC",
+            y,
+            m + 1,
+            remaining + 1,
+            hours,
+            minutes
+        )
     };
     // Also compute a filename-safe version for archiving
     let now_filename = now_timestamp.replace(' ', "_").replace(':', "");
@@ -1338,7 +1610,9 @@ pub async fn start_claude_session(
             }
         } else {
             // Local: archive to .operon/plan_history/
-            let history_dir = std::path::Path::new(&project_path).join(".operon").join("plan_history");
+            let history_dir = std::path::Path::new(&project_path)
+                .join(".operon")
+                .join("plan_history");
             let _ = std::fs::create_dir_all(&history_dir);
             let archive_name = format!("plan_{}.md", now_filename);
             let plan_path = std::path::Path::new(&project_path).join("implementation_plan.md");
@@ -1390,7 +1664,11 @@ pub async fn start_claude_session(
                 existing_plan_context,
                 escaped_prompt
             );
-            format!("claude {} -p '{}' --verbose --output-format stream-json", permission_flag, plan_prompt.replace('\'', "'\\''"))
+            format!(
+                "claude {} -p '{}' --verbose --output-format stream-json",
+                permission_flag,
+                plan_prompt.replace('\'', "'\\''")
+            )
         }
         "report" => {
             // Report mode: Claude drafts a scientific report based on project files.
@@ -1431,11 +1709,18 @@ pub async fn start_claude_session(
             let prompt_file = format!("/tmp/operon-report-prompt-{}.txt", session_id);
             std::fs::write(&prompt_file, &report_prompt)
                 .map_err(|e| format!("Failed to write report prompt file: {}", e))?;
-            eprintln!("[operon] Report prompt written to {} ({} bytes)", prompt_file, report_prompt.len());
+            eprintln!(
+                "[operon] Report prompt written to {} ({} bytes)",
+                prompt_file,
+                report_prompt.len()
+            );
 
             // Pipe prompt from file via stdin. -p enables print mode (non-interactive),
             // and the positional prompt argument comes from stdin.
-            format!("cat '{}' | claude {} -p --verbose --output-format stream-json", prompt_file, permission_flag)
+            format!(
+                "cat '{}' | claude {} -p --verbose --output-format stream-json",
+                prompt_file, permission_flag
+            )
         }
         "ask" => {
             // Ask mode: no tool use, answer questions with scientific rigor
@@ -1453,7 +1738,11 @@ pub async fn start_claude_session(
                 context_prefix,
                 escaped_prompt
             );
-            format!("claude {} -p '{}' --verbose --output-format stream-json --max-turns 1", permission_flag, ask_prompt.replace('\'', "'\\''"))
+            format!(
+                "claude {} -p '{}' --verbose --output-format stream-json --max-turns 1",
+                permission_flag,
+                ask_prompt.replace('\'', "'\\''")
+            )
         }
         _ => {
             // Agent mode (default): full tool use
@@ -1463,13 +1752,16 @@ pub async fn start_claude_session(
                     "{}IMPORTANT: As you complete steps from the implementation plan, \
                      update implementation_plan.md to mark completed steps with [x] \
                      so progress is tracked.\n\n{}",
-                    context_prefix,
-                    escaped_prompt
+                    context_prefix, escaped_prompt
                 )
             } else {
                 format!("{}{}", context_prefix, escaped_prompt)
             };
-            format!("claude {} -p '{}' --verbose --output-format stream-json", permission_flag, agent_prompt.replace('\'', "'\\''"))
+            format!(
+                "claude {} -p '{}' --verbose --output-format stream-json",
+                permission_flag,
+                agent_prompt.replace('\'', "'\\''")
+            )
         }
     };
 
@@ -1496,7 +1788,10 @@ pub async fn start_claude_session(
         claude_cmd.push_str(&format!(" --resume {}", resume));
     }
 
-    eprintln!("[operon] Final claude command (first 200 chars): {}", &claude_cmd[..claude_cmd.len().min(200)]);
+    eprintln!(
+        "[operon] Final claude command (first 200 chars): {}",
+        &claude_cmd[..claude_cmd.len().min(200)]
+    );
 
     // Sync MCP servers into Claude Code's native config so they're available
     // without relying on --mcp-config (which has known bugs in some Claude Code versions).
@@ -1510,7 +1805,10 @@ pub async fn start_claude_session(
     // (needed for remote/HPC sessions where Claude runs on a different host).
     if let Some(config_path) = super::mcp::generate_mcp_config(&mcp_servers)? {
         // Shell-escape the path in case it contains spaces
-        claude_cmd.push_str(&format!(" --mcp-config '{}'", config_path.replace('\'', "'\\''")));
+        claude_cmd.push_str(&format!(
+            " --mcp-config '{}'",
+            config_path.replace('\'', "'\\''")
+        ));
     }
 
     let shell = crate::platform::default_shell();
@@ -1526,7 +1824,14 @@ pub async fn start_claude_session(
     let session_name = {
         let trimmed = prompt.trim();
         if trimmed.len() > 50 {
-            format!("{}...", &trimmed[..trimmed.char_indices().nth(50).map(|(i,_)|i).unwrap_or(trimmed.len())])
+            format!(
+                "{}...",
+                &trimmed[..trimmed
+                    .char_indices()
+                    .nth(50)
+                    .map(|(i, _)| i)
+                    .unwrap_or(trimmed.len())]
+            )
         } else {
             trimmed.to_string()
         }
@@ -1566,7 +1871,8 @@ pub async fn start_claude_session(
             // so the claude process on the compute node can access it.
             if let Some(mcp_json) = super::mcp::generate_mcp_config_json(&mcp_servers)? {
                 let mcp_config_remote = format!("{}/.operon-mcp-config.json", ctx.remote_path);
-                let encoded_json = base64::engine::general_purpose::STANDARD.encode(mcp_json.as_bytes());
+                let encoded_json =
+                    base64::engine::general_purpose::STANDARD.encode(mcp_json.as_bytes());
                 let write_cmd = format!(
                     "echo '{}' | base64 -d > '{}'",
                     encoded_json,
@@ -1577,7 +1883,10 @@ pub async fn start_claude_session(
                 if let Some(local_path) = super::mcp::generate_mcp_config(&mcp_servers)? {
                     claude_cmd = claude_cmd.replace(
                         &format!("--mcp-config '{}'", local_path),
-                        &format!("--mcp-config '{}'", mcp_config_remote.replace('\'', "'\\''")),
+                        &format!(
+                            "--mcp-config '{}'",
+                            mcp_config_remote.replace('\'', "'\\''")
+                        ),
                     );
                 }
             }
@@ -1587,15 +1896,24 @@ pub async fn start_claude_session(
             // Uses SCP (with ControlMaster reuse) — reliable for any file size, no encoding issues.
             if mode == "report" {
                 let local_prompt_file = format!("/tmp/operon-report-prompt-{}.txt", session_id);
-                let remote_prompt_file = format!("{}/.operon-report-prompt-{}.txt", ctx.remote_path, session_id);
+                let remote_prompt_file = format!(
+                    "{}/.operon-report-prompt-{}.txt",
+                    ctx.remote_path, session_id
+                );
                 if std::path::Path::new(&local_prompt_file).exists() {
                     let host_str = format!("{}@{}", profile.user, profile.host);
                     let mut scp_args: Vec<String> = vec![
-                        "-o".to_string(), "BatchMode=yes".to_string(),
-                        "-o".to_string(), "ConnectTimeout=10".to_string(),
+                        "-o".to_string(),
+                        "BatchMode=yes".to_string(),
+                        "-o".to_string(),
+                        "ConnectTimeout=10".to_string(),
                     ];
                     // Reuse ControlMaster socket if available
-                    let sock = crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user);
+                    let sock = crate::platform::ssh_socket_path(
+                        &profile.host,
+                        profile.port,
+                        &profile.user,
+                    );
                     if sock.exists() {
                         scp_args.push("-o".to_string());
                         scp_args.push(format!("ControlPath={}", sock.to_string_lossy()));
@@ -1613,13 +1931,16 @@ pub async fn start_claude_session(
                     scp_args.push(local_prompt_file.clone());
                     scp_args.push(format!("{}:{}", host_str, remote_prompt_file));
 
-                    let scp_result = std::process::Command::new("scp")
-                        .args(&scp_args)
-                        .output();
+                    let scp_result = std::process::Command::new("scp").args(&scp_args).output();
                     match scp_result {
                         Ok(output) if output.status.success() => {
-                            let file_size = std::fs::metadata(&local_prompt_file).map(|m| m.len()).unwrap_or(0);
-                            eprintln!("[operon] SCP uploaded report prompt to remote: {} ({} bytes)", remote_prompt_file, file_size);
+                            let file_size = std::fs::metadata(&local_prompt_file)
+                                .map(|m| m.len())
+                                .unwrap_or(0);
+                            eprintln!(
+                                "[operon] SCP uploaded report prompt to remote: {} ({} bytes)",
+                                remote_prompt_file, file_size
+                            );
                         }
                         Ok(output) => {
                             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1647,15 +1968,21 @@ pub async fn start_claude_session(
             let script_file = format!("{}/.operon-run-{}.sh", ctx.remote_path, session_id);
             // Clean up the report prompt file after Claude finishes (if it exists)
             let prompt_cleanup = if mode == "report" {
-                format!("; rm -f '{}/.operon-report-prompt-{}.txt'",
-                    ctx.remote_path.replace('\'', "'\\''"), session_id)
+                format!(
+                    "; rm -f '{}/.operon-report-prompt-{}.txt'",
+                    ctx.remote_path.replace('\'', "'\\''"),
+                    session_id
+                )
             } else {
                 String::new()
             };
             // Export API key in the script so Claude can authenticate on the remote.
             // In terminal mode the user's shell may not have it set.
             let api_key_line = if let Some(key) = &api_key {
-                format!("export ANTHROPIC_API_KEY='{}'; ", key.replace('\'', "'\\''"))
+                format!(
+                    "export ANTHROPIC_API_KEY='{}'; ",
+                    key.replace('\'', "'\\''")
+                )
             } else {
                 String::new()
             };
@@ -1675,7 +2002,8 @@ pub async fn start_claude_session(
             //   - SCP (can fail with "dest open Failure" on some HPC filesystems)
             // ssh_exec rides the ControlMaster socket, so no re-auth needed.
             {
-                let b64_script = base64::engine::general_purpose::STANDARD.encode(script_content.as_bytes());
+                let b64_script =
+                    base64::engine::general_purpose::STANDARD.encode(script_content.as_bytes());
                 // Use printf instead of echo for portability, and base64 is shell-safe
                 // (only A-Za-z0-9+/=) so no quoting needed around it.
                 // Use double quotes for the path (safe inside ssh_exec's outer single quotes).
@@ -1717,7 +2045,8 @@ pub async fn start_claude_session(
                 profile.user, profile.host, profile.port
             );
             // Reuse ControlMaster socket if one exists from the main terminal connection
-            let ctrl_sock = crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user);
+            let ctrl_sock =
+                crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user);
             if ctrl_sock.exists() {
                 ssh_tail_args.push_str(&format!(
                     " -o \"ControlPath={}\"",
@@ -1773,12 +2102,17 @@ pub async fn start_claude_session(
             tail_cmd.stdout(std::process::Stdio::piped());
             tail_cmd.stderr(std::process::Stdio::piped());
 
-            let mut child = tail_cmd.spawn().map_err(|e| format!("Failed to start tail: {}", e))?;
+            let mut child = tail_cmd
+                .spawn()
+                .map_err(|e| format!("Failed to start tail: {}", e))?;
             let stdout = child.stdout.take().ok_or("Failed to capture tail stdout")?;
             let stderr = child.stderr.take();
 
             // Store as a session so it can be stopped
-            state.sessions.lock().map_err(|e| e.to_string())?
+            state
+                .sessions
+                .lock()
+                .map_err(|e| e.to_string())?
                 .insert(session_id.clone(), ClaudeSession { child });
 
             // Stream stdout (JSON lines from the output file)
@@ -1788,16 +2122,15 @@ pub async fn start_claude_session(
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    if line.trim().is_empty() { continue; }
+                    if line.trim().is_empty() {
+                        continue;
+                    }
                     let _ = app_handle.emit(
                         &format!("claude-event-{}", sid),
                         serde_json::json!({ "line": line }),
                     );
                 }
-                let _ = app_handle.emit(
-                    &format!("claude-done-{}", sid),
-                    serde_json::json!({}),
-                );
+                let _ = app_handle.emit(&format!("claude-done-{}", sid), serde_json::json!({}));
             });
 
             // Handle stderr (suppress SSH warnings)
@@ -1818,19 +2151,34 @@ pub async fn start_claude_session(
                     if !trimmed.is_empty() {
                         let is_just_warning = trimmed.lines().all(|l| {
                             let lt = l.trim().trim_start_matches('*').trim();
-                            lt.is_empty() || lt.contains("WARNING") || lt.contains("Warning") ||
-                            lt.contains("warning") || lt.contains("sntrup") || lt.contains("mlkem") ||
-                            lt.contains("post-quantum") || lt.contains("quantum") ||
-                            lt.contains("vulnerable") || lt.contains("decrypt later") ||
-                            lt.contains("upgraded") || lt.contains("openssh.com") ||
-                            lt.contains("store now") || lt.contains("key exchange") ||
-                            lt.contains("no stdin data") || lt.contains("redirect stdin") ||
-                            lt.contains("piping from") || lt.contains("/dev/null") ||
-                            lt.contains("wait longer") || lt.contains("proceeding without") ||
-                            lt.contains("Connection to") || lt.contains("Killed by signal") ||
-                            lt.contains("Transferred:") || lt.contains("kex_exchange") ||
-                            lt.contains("banner") || lt.starts_with("debug") ||
-                            lt.contains("file truncated") || lt.contains("tail:")
+                            lt.is_empty()
+                                || lt.contains("WARNING")
+                                || lt.contains("Warning")
+                                || lt.contains("warning")
+                                || lt.contains("sntrup")
+                                || lt.contains("mlkem")
+                                || lt.contains("post-quantum")
+                                || lt.contains("quantum")
+                                || lt.contains("vulnerable")
+                                || lt.contains("decrypt later")
+                                || lt.contains("upgraded")
+                                || lt.contains("openssh.com")
+                                || lt.contains("store now")
+                                || lt.contains("key exchange")
+                                || lt.contains("no stdin data")
+                                || lt.contains("redirect stdin")
+                                || lt.contains("piping from")
+                                || lt.contains("/dev/null")
+                                || lt.contains("wait longer")
+                                || lt.contains("proceeding without")
+                                || lt.contains("Connection to")
+                                || lt.contains("Killed by signal")
+                                || lt.contains("Transferred:")
+                                || lt.contains("kex_exchange")
+                                || lt.contains("banner")
+                                || lt.starts_with("debug")
+                                || lt.contains("file truncated")
+                                || lt.contains("tail:")
                         });
                         if !is_just_warning {
                             let _ = app_handle2.emit(
@@ -1849,7 +2197,9 @@ pub async fn start_claude_session(
 
             return Ok(());
         } else {
-            return Err("Terminal mode requires a remote connection and an active terminal".to_string());
+            return Err(
+                "Terminal mode requires a remote connection and an active terminal".to_string(),
+            );
         }
     }
 
@@ -1924,13 +2274,13 @@ pub async fn start_claude_session(
 
             echo ""
         "#;
-        let claude_resolve = super::ssh::ssh_exec(&profile, find_claude_cmd)
-            .unwrap_or_default();
+        let claude_resolve = super::ssh::ssh_exec(&profile, find_claude_cmd).unwrap_or_default();
         let claude_resolve = claude_resolve.trim().to_string();
 
         if claude_resolve.is_empty() || claude_resolve.contains("not found") {
             return Err("Claude CLI not found on the remote server. \
-                        Install it with: curl -fsSL https://claude.ai/install.sh | bash".to_string());
+                        Install it with: curl -fsSL https://claude.ai/install.sh | bash"
+                .to_string());
         }
 
         // Step 2: Replace `claude` with the resolved command
@@ -1945,14 +2295,20 @@ pub async fn start_claude_session(
         // For report mode, upload the prompt file to the remote server via SCP
         if mode == "report" {
             let local_prompt_file = format!("/tmp/operon-report-prompt-{}.txt", session_id);
-            let remote_prompt_file = format!("{}/.operon-report-prompt-{}.txt", ctx.remote_path, session_id);
+            let remote_prompt_file = format!(
+                "{}/.operon-report-prompt-{}.txt",
+                ctx.remote_path, session_id
+            );
             if std::path::Path::new(&local_prompt_file).exists() {
                 let host_str = format!("{}@{}", profile.user, profile.host);
                 let mut scp_args: Vec<String> = vec![
-                    "-o".to_string(), "BatchMode=yes".to_string(),
-                    "-o".to_string(), "ConnectTimeout=10".to_string(),
+                    "-o".to_string(),
+                    "BatchMode=yes".to_string(),
+                    "-o".to_string(),
+                    "ConnectTimeout=10".to_string(),
                 ];
-                let sock = crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user);
+                let sock =
+                    crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user);
                 if sock.exists() {
                     scp_args.push("-o".to_string());
                     scp_args.push(format!("ControlPath={}", sock.to_string_lossy()));
@@ -1972,11 +2328,19 @@ pub async fn start_claude_session(
 
                 match std::process::Command::new("scp").args(&scp_args).output() {
                     Ok(output) if output.status.success() => {
-                        let file_size = std::fs::metadata(&local_prompt_file).map(|m| m.len()).unwrap_or(0);
-                        eprintln!("[operon] SCP uploaded report prompt: {} ({} bytes)", remote_prompt_file, file_size);
+                        let file_size = std::fs::metadata(&local_prompt_file)
+                            .map(|m| m.len())
+                            .unwrap_or(0);
+                        eprintln!(
+                            "[operon] SCP uploaded report prompt: {} ({} bytes)",
+                            remote_prompt_file, file_size
+                        );
                     }
                     Ok(output) => {
-                        eprintln!("[operon] SCP upload failed: {}", String::from_utf8_lossy(&output.stderr));
+                        eprintln!(
+                            "[operon] SCP upload failed: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        );
                     }
                     Err(e) => {
                         eprintln!("[operon] SCP command failed: {}", e);
@@ -1996,7 +2360,10 @@ pub async fn start_claude_session(
         // Forward API key to the remote command — SSH doesn't forward env vars
         // by default, and HPC servers rarely have AcceptEnv configured for custom vars.
         let api_key_export = if let Some(key) = &api_key {
-            format!("export ANTHROPIC_API_KEY='{}'; ", key.replace('\'', "'\\''"))
+            format!(
+                "export ANTHROPIC_API_KEY='{}'; ",
+                key.replace('\'', "'\\''")
+            )
         } else {
             String::new()
         };
@@ -2017,7 +2384,8 @@ pub async fn start_claude_session(
             profile.user, profile.host, profile.port
         );
         // Reuse ControlMaster socket if available (avoids re-auth on Duo MFA clusters)
-        let ctrl_sock = crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user);
+        let ctrl_sock =
+            crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user);
         if ctrl_sock.exists() {
             ssh_args.push_str(&format!(
                 " -o \"ControlPath={}\"",
@@ -2056,7 +2424,9 @@ pub async fn start_claude_session(
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to start Claude: {}", e))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start Claude: {}", e))?;
 
     let stdout = child
         .stdout
@@ -2113,10 +2483,7 @@ pub async fn start_claude_session(
 
         // Stream ended — write done marker and emit event
         let _ = tokio::fs::write(&done_marker_path, "done").await;
-        let _ = app_handle.emit(
-            &format!("claude-done-{}", sid),
-            serde_json::json!({}),
-        );
+        let _ = app_handle.emit(&format!("claude-done-{}", sid), serde_json::json!({}));
     });
 
     // Spawn stderr reader task — surface SSH/remote errors to the frontend
@@ -2142,17 +2509,28 @@ pub async fn start_claude_session(
                 // Filter out common SSH warnings (post-quantum key exchange, etc.)
                 let is_just_warning = trimmed.lines().all(|l| {
                     let lt = l.trim().trim_start_matches('*').trim();
-                    lt.is_empty() ||
-                    lt.contains("WARNING") || lt.contains("Warning") || lt.contains("warning") ||
-                    lt.contains("sntrup") || lt.contains("mlkem") ||
-                    lt.contains("post-quantum") || lt.contains("quantum") ||
-                    lt.contains("vulnerable") || lt.contains("decrypt later") ||
-                    lt.contains("upgraded") || lt.contains("openssh.com") ||
-                    lt.contains("store now") || lt.contains("key exchange") ||
-                    lt.contains("no stdin data") || lt.contains("redirect stdin") ||
-                    lt.contains("piping from") || lt.contains("/dev/null") ||
-                    lt.contains("wait longer") || lt.contains("proceeding without") ||
-                    lt.contains("file truncated") || lt.contains("tail:")
+                    lt.is_empty()
+                        || lt.contains("WARNING")
+                        || lt.contains("Warning")
+                        || lt.contains("warning")
+                        || lt.contains("sntrup")
+                        || lt.contains("mlkem")
+                        || lt.contains("post-quantum")
+                        || lt.contains("quantum")
+                        || lt.contains("vulnerable")
+                        || lt.contains("decrypt later")
+                        || lt.contains("upgraded")
+                        || lt.contains("openssh.com")
+                        || lt.contains("store now")
+                        || lt.contains("key exchange")
+                        || lt.contains("no stdin data")
+                        || lt.contains("redirect stdin")
+                        || lt.contains("piping from")
+                        || lt.contains("/dev/null")
+                        || lt.contains("wait longer")
+                        || lt.contains("proceeding without")
+                        || lt.contains("file truncated")
+                        || lt.contains("tail:")
                 });
 
                 if !is_just_warning {
@@ -2246,20 +2624,49 @@ pub async fn archive_current_plan(
     let mut y = 1970i64;
     let mut remaining = days as i64;
     loop {
-        let days_in_year = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 { 366 } else { 365 };
-        if remaining < days_in_year { break; }
+        let days_in_year = if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 {
+            366
+        } else {
+            365
+        };
+        if remaining < days_in_year {
+            break;
+        }
         remaining -= days_in_year;
         y += 1;
     }
     let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut m = 0usize;
     for &md in &month_days {
-        if remaining < md as i64 { break; }
+        if remaining < md as i64 {
+            break;
+        }
         remaining -= md as i64;
         m += 1;
     }
-    let ts = format!("{:04}-{:02}-{:02}_{:02}{:02}{:02}_UTC", y, m + 1, remaining + 1, hours, minutes, seconds);
+    let ts = format!(
+        "{:04}-{:02}-{:02}_{:02}{:02}{:02}_UTC",
+        y,
+        m + 1,
+        remaining + 1,
+        hours,
+        minutes,
+        seconds
+    );
 
     if let Some(ctx) = remote {
         let profile = {
@@ -2283,12 +2690,18 @@ pub async fn archive_current_plan(
     } else {
         let plan_path = std::path::Path::new(&project_path).join("implementation_plan.md");
         if plan_path.is_file() {
-            let history_dir = std::path::Path::new(&project_path).join(".operon").join("plan_history");
-            std::fs::create_dir_all(&history_dir).map_err(|e| format!("Failed to create plan_history dir: {}", e))?;
+            let history_dir = std::path::Path::new(&project_path)
+                .join(".operon")
+                .join("plan_history");
+            std::fs::create_dir_all(&history_dir)
+                .map_err(|e| format!("Failed to create plan_history dir: {}", e))?;
             let archive_name = format!("plan_{}.md", ts);
             std::fs::copy(&plan_path, history_dir.join(&archive_name))
                 .map_err(|e| format!("Failed to archive plan: {}", e))?;
-            eprintln!("[operon] Archived implementation_plan.md → .operon/plan_history/{}", archive_name);
+            eprintln!(
+                "[operon] Archived implementation_plan.md → .operon/plan_history/{}",
+                archive_name
+            );
             Ok(true)
         } else {
             Ok(false)
@@ -2300,17 +2713,15 @@ pub async fn archive_current_plan(
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct PlanHistoryEntry {
     pub filename: String,
-    pub timestamp: String,      // e.g. "2026-03-29 14:30:05"
-    pub title: String,           // first heading or "Untitled Plan"
+    pub timestamp: String, // e.g. "2026-03-29 14:30:05"
+    pub title: String,     // first heading or "Untitled Plan"
     pub lines: u64,
-    pub path: String,            // full path to the archived file
+    pub path: String, // full path to the archived file
 }
 
 /// List all archived plans from .operon/plan_history/, newest first.
 #[tauri::command]
-pub async fn list_plan_history(
-    project_path: String,
-) -> Result<Vec<PlanHistoryEntry>, String> {
+pub async fn list_plan_history(project_path: String) -> Result<Vec<PlanHistoryEntry>, String> {
     let history_dir = std::path::Path::new(&project_path)
         .join(".operon")
         .join("plan_history");
@@ -2333,7 +2744,11 @@ pub async fn list_plan_history(
             .enumerate()
             .map(|(i, c)| {
                 // Insert colons into HHMMSS → HH:MM:SS
-                if i == 13 || i == 15 { ':' } else { c }
+                if i == 13 || i == 15 {
+                    ':'
+                } else {
+                    c
+                }
             })
             .collect::<String>();
 
@@ -2364,11 +2779,8 @@ pub async fn list_plan_history(
 
 /// Read the content of a specific archived plan.
 #[tauri::command]
-pub async fn read_plan_history_entry(
-    path: String,
-) -> Result<String, String> {
-    std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read plan: {}", e))
+pub async fn read_plan_history_entry(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read plan: {}", e))
 }
 
 // --- Session Management Commands ---
@@ -2399,10 +2811,7 @@ pub async fn update_session_claude_id(
 
 /// Mark a session as completed or failed.
 #[tauri::command]
-pub async fn update_session_status(
-    session_id: String,
-    status: String,
-) -> Result<(), String> {
+pub async fn update_session_status(session_id: String, status: String) -> Result<(), String> {
     if let Some(mut meta) = load_session_from_disk(&session_id)? {
         meta.status = status;
         meta.last_activity = std::time::SystemTime::now()
@@ -2430,9 +2839,9 @@ pub async fn list_sessions(
             let path_match = project_path.as_ref().map_or(true, |p| {
                 s.project_path == *p || s.remote_path.as_deref() == Some(p.as_str())
             });
-            let profile_match = profile_id.as_ref().map_or(true, |pid| {
-                s.profile_id.as_deref() == Some(pid.as_str())
-            });
+            let profile_match = profile_id
+                .as_ref()
+                .map_or(true, |pid| s.profile_id.as_deref() == Some(pid.as_str()));
             path_match && profile_match
         })
         .collect();
@@ -2534,8 +2943,8 @@ pub async fn reconnect_session(
     state: tauri::State<'_, ClaudeManager>,
     ssh_state: tauri::State<'_, super::ssh::SSHManager>,
     app: tauri::AppHandle,
-    session_id: String,           // The old session's ID (to find the files)
-    event_session_id: String,     // The current frontend session ID (for event channels)
+    session_id: String,       // The old session's ID (to find the files)
+    event_session_id: String, // The current frontend session ID (for event channels)
     remote: Option<RemoteContext>,
 ) -> Result<(), String> {
     let meta = load_session_from_disk(&session_id)?
@@ -2587,11 +2996,19 @@ pub async fn reconnect_session(
         tail_cmd.stdout(std::process::Stdio::piped());
         tail_cmd.stderr(std::process::Stdio::piped());
 
-        let mut child = tail_cmd.spawn().map_err(|e| format!("Failed to reconnect: {}", e))?;
-        let stdout = child.stdout.take().ok_or("Failed to capture reconnect stdout")?;
+        let mut child = tail_cmd
+            .spawn()
+            .map_err(|e| format!("Failed to reconnect: {}", e))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or("Failed to capture reconnect stdout")?;
 
         // Store as a session so it can be stopped
-        state.sessions.lock().map_err(|e| e.to_string())?
+        state
+            .sessions
+            .lock()
+            .map_err(|e| e.to_string())?
             .insert(event_session_id.clone(), ClaudeSession { child });
 
         // Stream output to frontend using the CURRENT frontend session ID for events
@@ -2609,10 +3026,7 @@ pub async fn reconnect_session(
                     serde_json::json!({ "line": line }),
                 );
             }
-            let _ = app_handle.emit(
-                &format!("claude-done-{}", sid),
-                serde_json::json!({}),
-            );
+            let _ = app_handle.emit(&format!("claude-done-{}", sid), serde_json::json!({}));
         });
 
         Ok(())
@@ -2638,10 +3052,7 @@ pub async fn reconnect_session(
 
 /// Rename a session (update its human-readable name).
 #[tauri::command]
-pub async fn rename_session(
-    session_id: String,
-    name: String,
-) -> Result<(), String> {
+pub async fn rename_session(session_id: String, name: String) -> Result<(), String> {
     if let Some(mut meta) = load_session_from_disk(&session_id).map_err(|e| e.to_string())? {
         meta.name = Some(name);
         save_session_to_disk(&meta)?;

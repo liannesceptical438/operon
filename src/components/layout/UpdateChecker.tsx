@@ -38,9 +38,9 @@ export function UpdateChecker() {
         setTimeout(() => setState('idle'), 3000);
       }
     } catch (err) {
-      console.error('Update check failed:', err);
-      setError(err instanceof Error ? err.message : 'Failed to check for updates');
-      setState('error');
+      // Silently ignore update check failures (e.g. no release published yet, no internet)
+      console.warn('Update check failed:', err);
+      setState('idle');
     }
   }, [isDev]);
 

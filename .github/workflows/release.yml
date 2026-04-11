@@ -45,7 +45,7 @@ jobs:
       - run: npm ci
 
       - name: Build and publish release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Required for auto-updater — generate with: npx tauri signer generate -w ~/.tauri/operon.key
@@ -61,7 +61,7 @@ jobs:
           releaseBody: 'See CHANGELOG.md for details.'
           releaseDraft: true
           prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
           tauriScript: npx tauri
           args: --target ${{ matrix.rust-target }}
-          # This makes tauri-action generate latest.json for the updater
-          updaterJsonPreferNsis: true

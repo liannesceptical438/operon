@@ -23,6 +23,7 @@
       "protocols/**/*"
     ],
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "macOS": {
       "entitlements": null,
       "infoPlist": "Info.plist",

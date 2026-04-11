@@ -1111,13 +1111,18 @@ WHICH=$(command -v claude 2>/dev/null)
 "#;
         if let Ok(probe_result) = super::ssh::ssh_exec(&profile, probe_script) {
             if let Some(path_line) = probe_result.lines().find(|l| l.starts_with("CLAUDE_PATH:")) {
-                let claude_path = path_line.strip_prefix("CLAUDE_PATH:").unwrap_or("claude").trim().to_string();
+                let claude_path = path_line
+                    .strip_prefix("CLAUDE_PATH:")
+                    .unwrap_or("claude")
+                    .trim()
+                    .to_string();
                 eprintln!("[operon] Detected remote claude path: {}", claude_path);
                 // Store in server_config
                 {
                     let mut profiles = ssh_state.profiles.lock().map_err(|e| e.to_string())?;
                     if let Some(prof) = profiles.iter_mut().find(|p| p.id == profile_id) {
-                        prof.server_config.insert("claude_path".to_string(), claude_path);
+                        prof.server_config
+                            .insert("claude_path".to_string(), claude_path);
                         let _ = super::ssh::save_profiles_to_disk(&profiles);
                     }
                 }
@@ -1208,8 +1213,7 @@ pub async fn remote_claude_login(
     // needs to open in their browser. We extract it and return it to the frontend.
     let login_script = format!(
         r#"{}TERM=dumb {} login 2>&1 | head -50"#,
-        REMOTE_PATH_PREFIX,
-        claude_bin,
+        REMOTE_PATH_PREFIX, claude_bin,
     );
 
     let result = super::ssh::ssh_exec(&profile, &login_script)
@@ -1226,7 +1230,9 @@ pub async fn remote_claude_login(
             if let Some(start) = line.find("https://") {
                 let url_part = &line[start..];
                 // Take until whitespace or end of line
-                let end = url_part.find(|c: char| c.is_whitespace()).unwrap_or(url_part.len());
+                let end = url_part
+                    .find(|c: char| c.is_whitespace())
+                    .unwrap_or(url_part.len());
                 Some(url_part[..end].to_string())
             } else {
                 None
@@ -3223,8 +3229,7 @@ pub async fn reconnect_tail(
         "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes {}@{} -p {}",
         profile.user, profile.host, profile.port
     );
-    let ctrl_sock =
-        crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user);
+    let ctrl_sock = crate::platform::ssh_socket_path(&profile.host, profile.port, &profile.user);
     if ctrl_sock.exists() {
         ssh_tail_args.push_str(&format!(
             " -o \"ControlPath={}\"",

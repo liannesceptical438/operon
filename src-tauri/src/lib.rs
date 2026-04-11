@@ -29,8 +29,8 @@ use commands::{
     create_remote_directory,
     delete_api_key,
     delete_path,
-    delete_remote_file,
     delete_protocol,
+    delete_remote_file,
     delete_session,
     delete_ssh_profile,
     detect_server_config,
@@ -56,8 +56,6 @@ use commands::{
     get_extension_reviews,
     get_extension_settings,
     get_home_dir,
-    // Terminal
-    get_terminal_cwd,
     // MCP
     get_mcp_catalog,
     get_namespace_extensions,
@@ -66,6 +64,8 @@ use commands::{
     get_server_config,
     // Settings & System
     get_settings,
+    // Terminal
+    get_terminal_cwd,
     gh_add_remote,
     gh_check_auth,
     gh_create_repo,
@@ -106,7 +106,6 @@ use commands::{
     install_phase_tools,
     install_phase_xcode,
     install_remote_claude,
-    remote_claude_login,
     install_remote_extension,
     install_remote_mcp_server,
     install_xcode_cli,
@@ -137,6 +136,7 @@ use commands::{
     reconnect_session,
     reconnect_tail,
     refresh_environment,
+    remote_claude_login,
     remove_mcp_server,
     rename_path,
     rename_session,

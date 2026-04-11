@@ -1007,7 +1007,10 @@ pub async fn delete_remote_file(
     };
 
     // Safety: only delete files, refuse directories
-    let check_cmd = format!("test -f {} && echo FILE || echo NOTFILE", shell_escape_inner(&path));
+    let check_cmd = format!(
+        "test -f {} && echo FILE || echo NOTFILE",
+        shell_escape_inner(&path)
+    );
     let result = ssh_exec(&profile, &check_cmd)?;
     if result.trim() != "FILE" {
         return Err("Path is not a file or does not exist".to_string());

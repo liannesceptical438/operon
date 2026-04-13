@@ -560,25 +560,77 @@ pub async fn spawn_ssh_terminal(
 
     // On Windows, run ssh.exe directly — cmd.exe doesn't accept -l/-c flags.
     // On macOS/Linux, use a login shell so PATH, aliases, and SSH agent are available.
+    //#[cfg(target_os = "windows")]
+    //let mut cmd = {
+    //    let mut c = CommandBuilder::new("ssh.exe");
+    //    c.args([
+    //        &format!("{}@{}", profile.user, profile.host),
+    //        "-p",
+    //        &profile.port.to_string(),
+    //        "-o",
+    //        "ServerAliveInterval=30",
+    //        // Suppress "getsockname failed: Not a socket" ConPTY warning on Windows
+    //        "-o",
+    //        "LogLevel=ERROR",
+    //    ]);
+    //    // Add key file if set
+    //    if let Some(key) = &profile.key_file {
+    //        c.args(["-i", key]);
+    //    }
+    //    c
+    //};
+
+    // Added in to avoid ConPty, if possible (by routing the command through git bash).
+    // This is a workaround for the notorious "ConPTY stall" bug in Windows 10/11's SSH client, 
+    // where interactive sessions can freeze indefinitely due to a deadlock in the pseudo-terminal implementation.
+    // By running ssh.exe inside Git Bash, we get a proper POSIX PTY environment that avoids this issue.
+    // If Git Bash isn't available, we fall back to direct ssh.exe with ConPTY, which is less stable but still functional for non-interactive use.
+    // This also introduced a fix for the "not a socket" message.
     #[cfg(target_os = "windows")]
     let mut cmd = {
-        let mut c = CommandBuilder::new("ssh.exe");
-        c.args([
-            &format!("{}@{}", profile.user, profile.host),
-            "-p",
-            &profile.port.to_string(),
-            "-o",
-            "ServerAliveInterval=30",
-            // Suppress "getsockname failed: Not a socket" ConPTY warning on Windows
-            "-o",
-            "LogLevel=ERROR",
-        ]);
-        // Add key file if set
-        if let Some(key) = &profile.key_file {
-            c.args(["-i", key]);
+        // Explicitly disable ControlMaster in case ~/.ssh/config enables it —
+        // Windows doesn't support Unix domain sockets for control paths.
+        let win_ssh_cmd = format!(
+            "{} -o ControlMaster=no -o ControlPath=none -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15",
+            ssh_cmd  // reuse the already-built ssh_cmd string
+        );
+        let bash = crate::platform::find_git_bash();
+        eprintln!("[operon-ssh] find_git_bash() = {:?}", bash);
+        if let Some(bash_path) = bash {
+            eprintln!("[operon-ssh] Using Git Bash at {}", bash_path);
+
+
+            // Git Bash gives ssh.exe a proper POSIX PTY environment — 
+            // avoids the ConPTY stall bug with interactive SSH sessions
+            let mut c = CommandBuilder::new(&bash_path);
+            c.arg("-c");
+            c.arg(&win_ssh_cmd);
+
+            eprintln!("[operon-ssh] No Git Bash found, falling back to ConPTY");
+
+            c
+        } else {
+            // Fallback: direct ssh.exe (ConPTY path, known to be flaky)
+            let mut c = CommandBuilder::new("ssh.exe");
+            c.args([
+                &format!("{}@{}", profile.user, profile.host),
+                "-p", &profile.port.to_string(),
+                "-o", "ServerAliveInterval=30",
+                "-o", "ControlMaster=no",
+                "-o", "ControlPath=none",
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "ConnectTimeout=15",
+            ]);
+            if let Some(key) = &profile.key_file {
+                c.args(["-i", key]);
+            }
+
+            println!("Using ConPTY");
+
+            c
         }
-        c
     };
+
     #[cfg(not(target_os = "windows"))]
     let mut cmd = {
         let shell = crate::platform::default_shell();

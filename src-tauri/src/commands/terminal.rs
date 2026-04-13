@@ -53,18 +53,62 @@ pub async fn spawn_terminal(
     // Detect user's shell via platform abstraction
     let shell = crate::platform::default_shell();
 
+    //let mut cmd = if let Some(args) = &ssh_args {
+    //    // Spawn SSH directly as the PTY process — no shell wrapper.
+    //    // SSH becomes the root process. -t forces TTY allocation.
+    //    let mut c = CommandBuilder::new("ssh");
+    //    c.arg("-t"); // Force interactive TTY
+    //    for arg in args {
+    //        c.arg(arg);
+    //    }
+    //    c
+    //} else {
+    //    CommandBuilder::new(&shell)
+    //};
+    
     let mut cmd = if let Some(args) = &ssh_args {
-        // Spawn SSH directly as the PTY process — no shell wrapper.
-        // SSH becomes the root process. -t forces TTY allocation.
-        let mut c = CommandBuilder::new("ssh");
-        c.arg("-t"); // Force interactive TTY
-        for arg in args {
-            c.arg(arg);
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(bash_path) = crate::platform::find_git_bash() {
+                let mut clean_args: Vec<String> = Vec::new();
+                let mut i = 0;
+                while i < args.len() {
+                    if args[i] == "-o" && i + 1 < args.len() {
+                        let next = &args[i + 1];
+                        if next.starts_with("ControlMaster=")
+                            || next.starts_with("ControlPath=")
+                            || next.starts_with("ControlPersist=")
+                        {
+                            i += 2;
+                            continue;
+                        }
+                    }
+                    clean_args.push(args[i].replace('\\', "/"));
+                    i += 1;
+                }
+                let ssh_cmd = format!("ssh -t {}", clean_args.join(" "));
+                let mut c = CommandBuilder::new(&bash_path);
+                c.arg("-c");
+                c.arg(&ssh_cmd);
+                c
+            } else {
+                let mut c = CommandBuilder::new("ssh.exe");
+                c.arg("-t");
+                for arg in args { c.arg(arg); }
+                c
+            }
         }
-        c
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut c = CommandBuilder::new("ssh");
+            c.arg("-t");
+            for arg in args { c.arg(arg); }
+            c
+        }
     } else {
         CommandBuilder::new(&shell)
     };
+    
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     // Tell macOS zsh to source /etc/zshrc_Apple_Terminal which emits OSC 7

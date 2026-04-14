@@ -1213,8 +1213,28 @@ export function ChatPanel() {
 
   // Remote OAuth login flow
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
-  const [loginStatus, setLoginStatus] = useState<'idle' | 'fetching' | 'ready' | 'error'>('idle');
+  const [loginStatus, setLoginStatus] = useState<'idle' | 'fetching' | 'ready' | 'ready_no_url' | 'error'>('idle');
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [authCode, setAuthCode] = useState('');
+
+  // Auto-poll for auth completion after OAuth URL is shown
+  useEffect(() => {
+    if (!['ready', 'ready_no_url', 'fetching'].includes(loginStatus) || !remoteInfo?.profileId) return;
+    const interval = setInterval(async () => {
+      try {
+        const authResult = await invoke<string>('check_remote_claude_auth', { profileId: remoteInfo.profileId });
+        if (authResult === 'authenticated') {
+          clearInterval(interval);
+          setLoginStatus('idle');
+          setLoginUrl(null);
+          setRemoteDeps((prev) => prev ? { ...prev, hasAuth: true } : prev);
+        }
+      } catch {
+        // Ignore polling errors silently
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [loginStatus, remoteInfo?.profileId]);
 
   // Voice dictation via native macOS speech recognition
   const [isDictating, setIsDictating] = useState(false);
@@ -2423,10 +2443,12 @@ export function ChatPanel() {
       console.log('[Operon] Setting remoteDeps to:', JSON.stringify(newDeps));
       setRemoteDeps(newDeps);
     } catch (err) {
+      const errStr = `${err}`;
       setRemoteDeps((prev) => prev ? {
         ...prev,
         installing: false,
-        error: `${err}`,
+        error: errStr,
+        installFailed: true,
       } : prev);
     }
   };
@@ -3210,9 +3232,31 @@ You are running on an HPC cluster via an SSH connection. Follow these rules stri
               </div>
 
               {remoteDeps.error && (
-                <p className="text-[10px] text-red-400 mt-1.5 leading-relaxed whitespace-pre-wrap">
-                  {remoteDeps.error}
-                </p>
+                <div className="mt-1.5 space-y-1.5">
+                  {(remoteDeps as any).installFailed ? (
+                    <>
+                      <p className="text-[10px] text-red-400 font-medium">Automatic installation did not complete successfully.</p>
+                      <div className="p-2 bg-zinc-800/60 rounded border border-zinc-700/40 space-y-1.5">
+                        <p className="text-[10px] text-zinc-300 font-medium">To install manually:</p>
+                        <ol className="text-[10px] text-zinc-400 space-y-1 list-decimal list-inside leading-relaxed">
+                          <li>Open a terminal connected to <span className="text-zinc-300 font-medium">{remoteInfo?.profileName}</span></li>
+                          <li>Run: <code className="text-amber-400 bg-zinc-900/80 px-1 py-0.5 rounded font-mono">curl -fsSL https://claude.ai/install.sh | bash</code></li>
+                          <li>If that doesn't work, try: <code className="text-amber-400 bg-zinc-900/80 px-1 py-0.5 rounded font-mono">npm install -g @anthropic-ai/claude-code</code></li>
+                          <li>Run <code className="text-amber-400 bg-zinc-900/80 px-1 py-0.5 rounded font-mono">source ~/.bashrc</code> to update your PATH</li>
+                          <li>Come back here and click <span className="text-blue-400 font-medium">Re-check</span></li>
+                        </ol>
+                      </div>
+                      <details className="text-[9px] text-zinc-600">
+                        <summary className="cursor-pointer hover:text-zinc-400 transition-colors">Show error details</summary>
+                        <pre className="mt-1 text-[9px] text-red-400/70 whitespace-pre-wrap break-all bg-zinc-900/50 rounded p-1.5 border border-zinc-800/50 max-h-24 overflow-y-auto">{remoteDeps.error}</pre>
+                      </details>
+                    </>
+                  ) : (
+                    <p className="text-[10px] text-red-400 leading-relaxed whitespace-pre-wrap">
+                      {remoteDeps.error}
+                    </p>
+                  )}
+                </div>
               )}
 
               <div className="flex items-center gap-2 mt-2">
@@ -3224,7 +3268,7 @@ You are running on an HPC cluster via an SSH connection. Follow these rules stri
                   {remoteDeps.installing ? (
                     <><Loader2 className="w-3 h-3 animate-spin" /> Installing...</>
                   ) : (
-                    <><Download className="w-3 h-3" /> Install on Server</>
+                    <><Download className="w-3 h-3" /> {(remoteDeps as any).installFailed ? 'Retry Install' : 'Install on Server'}</>
                   )}
                 </button>
                 <button
@@ -3263,19 +3307,91 @@ You are running on an HPC cluster via an SSH connection. Follow these rules stri
                   <div className="flex items-center gap-2 mt-1.5">
                     <button
                       onClick={async () => {
+                        if (!sshTerminalId) {
+                          setLoginError('No SSH terminal connected. Open a terminal to the server first.');
+                          setLoginStatus('error');
+                          return;
+                        }
                         setLoginStatus('fetching');
                         setLoginError(null);
                         setLoginUrl(null);
+                        setAuthCode('');
+
+                        // Listen to terminal output for the OAuth URL.
+                        // IMPORTANT: Register listener BEFORE injecting the command
+                        // to avoid a race condition where the URL arrives before
+                        // the listener is ready.
+                        //
+                        // The URL arrives across multiple pty-output chunks (line-wrapped).
+                        // Strategy: accumulate output, and once we detect an https URL
+                        // containing claude/anthropic/oauth, debounce for 1.5s to ensure
+                        // the full URL has arrived, then extract it.
+                        let foundUrl = false;
+                        let outputBuffer = '';
+                        let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+                        const tryExtractUrl = () => {
+                          const cleaned = outputBuffer
+                            .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
+                            .replace(/\x1b\][^\x07]*\x07/g, '')
+                            .replace(/\x1b[()][A-Z0-9]/g, '')
+                            .replace(/[\r\n]/g, '');
+                          // Try multiple URL patterns — Claude login URL format may vary
+                          const match =
+                            cleaned.match(/https:\/\/claude\.com\/cai\/oauth\/authorize\?[A-Za-z0-9%&=_.+\-:/?]+/) ||
+                            cleaned.match(/https:\/\/[A-Za-z0-9.-]*claude[A-Za-z0-9.-]*\/[A-Za-z0-9%&=_.+\-:/?]{20,}/) ||
+                            cleaned.match(/https:\/\/[A-Za-z0-9.-]*anthropic[A-Za-z0-9.-]*\/[A-Za-z0-9%&=_.+\-:/?]{20,}/) ||
+                            cleaned.match(/https:\/\/[A-Za-z0-9%&=_.+\-:/?]*(?:oauth|authorize)[A-Za-z0-9%&=_.+\-:/?]{20,}/);
+                          if (match) {
+                            foundUrl = true;
+                            unlisten();
+                            const url = match[0];
+                            console.log('[Operon] Captured OAuth URL from terminal:', url);
+                            setLoginUrl(url);
+                            setLoginStatus('ready');
+                            invoke('open_url', { url }).catch(() => {});
+                          } else {
+                            console.warn('[Operon] Debounce fired but no URL found. Cleaned:', cleaned.slice(0, 500));
+                          }
+                        };
+
+                        const unlisten = await listen<{ output: string }>(
+                          `pty-output-${sshTerminalId}`,
+                          (event) => {
+                            if (foundUrl) return;
+                            outputBuffer += event.payload.output;
+                            // Check if buffer likely contains a URL
+                            const hasUrl = outputBuffer.includes('https://');
+                            if (!hasUrl) return;
+                            // Debounce: wait 1.5s after last chunk to ensure the
+                            // full URL has been received (it arrives across many chunks)
+                            if (debounceTimer) clearTimeout(debounceTimer);
+                            debounceTimer = setTimeout(tryExtractUrl, 1500);
+                          },
+                        );
+
+                        // NOW inject the command — listener is already active
                         try {
-                          const url = await invoke<string>('remote_claude_login', { profileId: remoteInfo!.profileId });
-                          setLoginUrl(url);
-                          setLoginStatus('ready');
-                          // Auto-open in local browser
-                          invoke('open_url', { url }).catch(() => {});
+                          const cmd = 'claude login\n';
+                          await invoke('write_terminal', {
+                            terminalId: sshTerminalId,
+                            data: Array.from(new TextEncoder().encode(cmd)),
+                          });
                         } catch (err) {
-                          setLoginError(String(err));
+                          unlisten();
+                          setLoginError(`Could not send command to terminal: ${err}`);
                           setLoginStatus('error');
+                          return;
                         }
+
+                        // Timeout after 45s if no URL found
+                        setTimeout(() => {
+                          if (!foundUrl) {
+                            unlisten();
+                            console.warn('[Operon] Login URL detection timed out. Buffer:', outputBuffer.slice(0, 500));
+                            setLoginStatus('ready_no_url');
+                          }
+                        }, 45000);
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 rounded text-[11px] text-white font-medium transition-colors"
                     >
@@ -3287,34 +3403,121 @@ You are running on an HPC cluster via an SSH connection. Follow these rules stri
                 {loginStatus === 'fetching' && (
                   <div className="flex items-center gap-2 mt-1.5 text-[10px] text-zinc-400">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    Running claude login on server...
+                    Running claude login in terminal — watching for login URL...
                   </div>
                 )}
                 {loginStatus === 'ready' && loginUrl && (
-                  <div className="mt-1.5 space-y-2">
-                    <p className="text-[10px] text-green-400">Opening in your browser. If it didn't open, click the link below:</p>
-                    <div className="flex items-center gap-1.5 bg-zinc-800/80 rounded px-2 py-1.5 border border-zinc-700/30">
-                      <a
-                        href={loginUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] text-blue-400 hover:text-blue-300 underline break-all font-mono"
-                      >
-                        {loginUrl}
-                      </a>
-                      <button
-                        onClick={() => navigator.clipboard.writeText(loginUrl)}
-                        className="text-[9px] text-zinc-500 hover:text-zinc-300 shrink-0 px-1"
-                      >
-                        Copy
-                      </button>
+                  <div className="mt-1.5 space-y-2.5">
+                    <div>
+                      <p className="text-[10px] text-green-400 mb-1">Step 1: Sign in using this link (opened in your browser):</p>
+                      <div className="flex items-start gap-1.5 bg-zinc-800/80 rounded px-2.5 py-2 border border-green-700/30">
+                        <a
+                          href={loginUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-blue-400 hover:text-blue-300 underline break-all font-mono flex-1 leading-relaxed"
+                        >
+                          {loginUrl}
+                        </a>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(loginUrl);
+                          }}
+                          className="flex items-center gap-1 text-[10px] text-zinc-400 hover:text-zinc-200 bg-zinc-700/60 hover:bg-zinc-700 rounded px-2 py-1 shrink-0 transition-colors"
+                          title="Copy URL to clipboard"
+                        >
+                          <Copy className="w-3 h-3 pointer-events-none" />
+                          Copy
+                        </button>
+                      </div>
                     </div>
-                    <p className="text-[9px] text-zinc-500">After signing in, click Re-check Auth below.</p>
+                    <div>
+                      <p className="text-[10px] text-zinc-300 mb-1">Step 2: After signing in, paste the authentication code here:</p>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={authCode}
+                          onChange={(e) => setAuthCode(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && authCode.trim() && sshTerminalId) {
+                              // Send auth code to the terminal (claude login is waiting for it)
+                              invoke('write_terminal', {
+                                terminalId: sshTerminalId,
+                                data: Array.from(new TextEncoder().encode(authCode.trim() + '\n')),
+                              }).catch(console.error);
+                              setAuthCode('');
+                              setLoginStatus('idle');
+                              setLoginUrl(null);
+                              // Re-check auth after a short delay
+                              setTimeout(() => recheckRemoteDeps(), 3000);
+                            }
+                          }}
+                          placeholder="Paste authentication code..."
+                          className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1.5 text-[11px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-blue-500 font-mono"
+                        />
+                        <button
+                          onClick={() => {
+                            if (authCode.trim() && sshTerminalId) {
+                              invoke('write_terminal', {
+                                terminalId: sshTerminalId,
+                                data: Array.from(new TextEncoder().encode(authCode.trim() + '\n')),
+                              }).catch(console.error);
+                              setAuthCode('');
+                              setLoginStatus('idle');
+                              setLoginUrl(null);
+                              setTimeout(() => recheckRemoteDeps(), 3000);
+                            }
+                          }}
+                          disabled={!authCode.trim()}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-green-600 hover:bg-green-500 disabled:bg-zinc-700 disabled:text-zinc-500 rounded text-[11px] text-white font-medium transition-colors"
+                        >
+                          <Send className="w-3 h-3 pointer-events-none" />
+                          Submit
+                        </button>
+                      </div>
+                      <p className="text-[9px] text-zinc-600 mt-1">
+                        The code will be sent to the terminal where <code className="bg-zinc-800 px-0.5 rounded">claude login</code> is waiting.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {loginStatus === 'ready_no_url' && (
+                  <div className="mt-1.5 space-y-2">
+                    <p className="text-[10px] text-amber-400">
+                      The <code className="bg-zinc-800 px-1 rounded">claude login</code> command is running in the terminal below.
+                    </p>
+                    <div className="p-2 bg-zinc-800/60 rounded border border-amber-700/30 space-y-1">
+                      <p className="text-[10px] text-zinc-300">Check the terminal for a login URL. If you see one:</p>
+                      <ol className="text-[10px] text-zinc-400 space-y-0.5 list-decimal list-inside leading-relaxed">
+                        <li>Copy the URL from the terminal</li>
+                        <li>Open it in your browser and sign in</li>
+                        <li>Come back here and click <span className="text-blue-400 font-medium">Re-check Auth</span></li>
+                      </ol>
+                    </div>
+                    <button
+                      onClick={() => { setLoginStatus('idle'); }}
+                      className="text-[10px] text-zinc-400 hover:text-zinc-300 underline"
+                    >
+                      Try again
+                    </button>
                   </div>
                 )}
                 {loginStatus === 'error' && (
-                  <div className="mt-1.5 space-y-1.5">
-                    <p className="text-[10px] text-red-400">{loginError}</p>
+                  <div className="mt-1.5 space-y-2">
+                    <p className="text-[10px] text-red-400">Login could not be started automatically.</p>
+                    <div className="p-2 bg-zinc-800/60 rounded border border-zinc-700/40 space-y-1.5">
+                      <p className="text-[10px] text-zinc-300 font-medium">You can log in manually instead:</p>
+                      <ol className="text-[10px] text-zinc-400 space-y-1 list-decimal list-inside leading-relaxed">
+                        <li>Open a terminal connected to <span className="text-zinc-300 font-medium">{remoteInfo?.profileName}</span></li>
+                        <li>Run: <code className="text-amber-400 bg-zinc-900/80 px-1 py-0.5 rounded font-mono">claude login</code></li>
+                        <li>Follow the prompts to authenticate</li>
+                        <li>Come back here and click <span className="text-blue-400 font-medium">Re-check Auth</span></li>
+                      </ol>
+                    </div>
+                    <details className="text-[9px] text-zinc-600">
+                      <summary className="cursor-pointer hover:text-zinc-400 transition-colors">Show error details</summary>
+                      <pre className="mt-1 text-[9px] text-red-400/70 whitespace-pre-wrap break-all bg-zinc-900/50 rounded p-1.5 border border-zinc-800/50 max-h-24 overflow-y-auto">{loginError}</pre>
+                    </details>
                     <button
                       onClick={() => { setLoginStatus('idle'); setLoginError(null); }}
                       className="text-[10px] text-zinc-400 hover:text-zinc-300 underline"
@@ -3325,9 +3528,27 @@ You are running on an HPC cluster via an SSH connection. Follow these rules stri
                 )}
               </div>
 
-              {/* Option B: API key */}
+              {/* Option B: Manual terminal login */}
               <div className="mt-1.5 p-2 bg-zinc-900/60 rounded border border-zinc-700/50">
-                <p className="text-[10px] text-zinc-300 font-medium mb-1">Option B: Use an API key</p>
+                <p className="text-[10px] text-zinc-300 font-medium mb-1">Option B: Log in manually via terminal</p>
+                <p className="text-[9px] text-zinc-500 leading-relaxed">
+                  If the button above doesn't work, open a terminal to <span className="text-zinc-400">{remoteInfo?.profileName}</span> and run:
+                </p>
+                <div className="mt-1 flex items-center gap-1.5 bg-zinc-800/80 rounded px-2 py-1 border border-zinc-700/30">
+                  <code className="text-[10px] text-amber-400 font-mono select-all flex-1">claude login</code>
+                  <button
+                    onClick={() => navigator.clipboard.writeText('claude login')}
+                    className="text-[9px] text-zinc-500 hover:text-zinc-300 shrink-0 px-1"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p className="text-[9px] text-zinc-600 mt-1">Follow the prompts, then click Re-check Auth below.</p>
+              </div>
+
+              {/* Option C: API key */}
+              <div className="mt-1.5 p-2 bg-zinc-900/60 rounded border border-zinc-700/50">
+                <p className="text-[10px] text-zinc-300 font-medium mb-1">Option C: Use an API key</p>
                 <p className="text-[9px] text-zinc-500">
                   Set your API key in Operon settings — it gets passed to the server automatically.
                   Get a key from{' '}

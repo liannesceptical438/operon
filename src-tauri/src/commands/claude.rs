@@ -1208,12 +1208,62 @@ pub async fn remote_claude_login(
             .unwrap_or_else(|| "claude".to_string())
     };
 
-    // Run `claude login` and capture the OAuth URL from output.
-    // The login command prints a URL like https://claude.ai/oauth/... that the user
-    // needs to open in their browser. We extract it and return it to the frontend.
+    // Run `claude login` on the remote server and extract the OAuth URL.
+    //
+    // `claude login` is interactive and needs a PTY to produce output. We use
+    // the `script` command (available on all Linux/macOS) to allocate a pseudo-TTY.
+    // The process runs in the background so it stays alive to receive the OAuth
+    // callback after the user authenticates in their browser.
+    //
+    // Strategy:
+    //   1. Use `script` to run `claude login` with a PTY, output to a temp file
+    //   2. Background it so it stays alive for the OAuth callback
+    //   3. Poll the temp file for up to 30s until the OAuth URL appears
+    //   4. Strip ANSI escape codes when extracting the URL
     let login_script = format!(
-        r#"{}TERM=dumb {} login 2>&1 | head -50"#,
-        REMOTE_PATH_PREFIX, claude_bin,
+        r#"{prefix}
+LOGFILE="/tmp/.operon-login-$$.log"
+rm -f "$LOGFILE"
+touch "$LOGFILE"
+
+# Use `script` to provide a pseudo-TTY for claude login, which needs
+# interactive output to display the OAuth URL.
+# Linux (util-linux) and macOS/BSD have different `script` flag syntax.
+if script -V 2>&1 | grep -qi 'util-linux' || [ "$(uname)" = "Linux" ]; then
+  # Linux: script -q -c 'cmd' outfile
+  script -q -c 'TERM=dumb {claude_bin} login 2>&1' "$LOGFILE" </dev/null &
+else
+  # macOS / BSD: script -q outfile cmd...
+  script -q "$LOGFILE" bash -c 'TERM=dumb {claude_bin} login 2>&1' </dev/null &
+fi
+LOGIN_PID=$!
+
+# Poll for URL to appear (up to 30 seconds)
+for i in $(seq 1 60); do
+  # Strip ANSI escape codes and carriage returns, then look for https URL
+  URL=$(sed 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Z0-9]//g; s/\r//g' "$LOGFILE" 2>/dev/null | tr -d '\000' | grep -oE 'https://[^[:space:]"'"'"']+' | head -1)
+  if [ -n "$URL" ]; then
+    echo "URL:$URL"
+    echo "PID:$LOGIN_PID"
+    echo "LOG:$LOGFILE"
+    exit 0
+  fi
+  sleep 0.5
+done
+
+# Timeout — dump whatever we got (strip ANSI for readability)
+echo "TIMEOUT"
+CLEANED=$(sed 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\][^\x07]*\x07//g; s/\x1b[()][A-Z0-9]//g; s/\r//g' "$LOGFILE" 2>/dev/null | tr -d '\000' | head -30)
+if [ -n "$CLEANED" ]; then
+  echo "$CLEANED"
+else
+  echo "(no output captured — script command may not be available)"
+  # Last-resort fallback: try without PTY
+  TERM=dumb timeout 10 {claude_bin} login 2>&1 | head -30 || echo "(direct login also failed)"
+fi
+"#,
+        prefix = REMOTE_PATH_PREFIX,
+        claude_bin = claude_bin,
     );
 
     let result = super::ssh::ssh_exec(&profile, &login_script)
@@ -1221,31 +1271,54 @@ pub async fn remote_claude_login(
 
     eprintln!("[operon] remote_claude_login output: {}", result);
 
-    // Extract URL from the output — look for https:// URLs
+    // Extract the URL from our structured output
     let url = result
         .lines()
-        .filter_map(|line| {
-            // Find any https URL in the line
+        .find_map(|line| {
             let line = line.trim();
-            if let Some(start) = line.find("https://") {
-                let url_part = &line[start..];
-                // Take until whitespace or end of line
-                let end = url_part
-                    .find(|c: char| c.is_whitespace())
-                    .unwrap_or(url_part.len());
-                Some(url_part[..end].to_string())
-            } else {
-                None
-            }
-        })
-        .find(|url| url.contains("claude.ai") || url.contains("anthropic.com"));
+            line.strip_prefix("URL:").map(|s| s.to_string())
+        });
+
+    // If structured extraction failed, try broad URL scan as fallback
+    let url = url.or_else(|| {
+        result
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if let Some(start) = line.find("https://") {
+                    let url_part = &line[start..];
+                    let end = url_part
+                        .find(|c: char| c.is_whitespace())
+                        .unwrap_or(url_part.len());
+                    Some(url_part[..end].to_string())
+                } else {
+                    None
+                }
+            })
+            .find(|url| url.contains("claude.ai") || url.contains("anthropic.com"))
+    });
 
     match url {
         Some(url) => Ok(url),
-        None => Err(format!(
-            "Could not find OAuth URL in claude login output. You may need to run it manually in the terminal.\n\nOutput:\n{}",
-            result.lines().take(10).collect::<Vec<_>>().join("\n")
-        )),
+        None => {
+            // Check for common failure reasons
+            let hint = if result.contains("TIMEOUT") {
+                "The login command timed out waiting for an OAuth URL — the server may be slow or `claude login` may require a different setup."
+            } else if result.contains("command not found") || result.contains("not found") {
+                "Claude Code may not be installed or not in PATH on this server."
+            } else if result.contains("permission denied") || result.contains("Permission denied") {
+                "Permission denied — check that you have access to run Claude on this server."
+            } else if result.is_empty() || result.trim().is_empty() {
+                "No output was returned — the SSH connection may have dropped."
+            } else {
+                "The login command did not produce an authentication URL."
+            };
+            Err(format!(
+                "{}\n\nYou can log in manually by running 'claude login' in a terminal on the server.\n\nServer output:\n{}",
+                hint,
+                result.lines().take(10).collect::<Vec<_>>().join("\n")
+            ))
+        }
     }
 }
 

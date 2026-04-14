@@ -402,14 +402,29 @@ function LocalFileExplorer({ localTerminalId }: LocalFileExplorerProps) {
     [],
   );
 
+  // Track whether we've already attempted to restore from settings
+  const restoredRef = useRef(false);
+
   useEffect(() => {
     if (projectPath) {
       loadDir(projectPath);
-    } else {
-      invoke<string>('get_home_dir')
-        .then((home) => {
-          setProjectPath(home);
-          loadDir(home);
+      // Persist the project path to settings so it's restored on next launch
+      invoke('get_settings').then((settings: any) => {
+        if (settings.last_project_path !== projectPath) {
+          invoke('update_settings', { settings: { ...settings, last_project_path: projectPath } }).catch(() => {});
+        }
+      }).catch(() => {});
+    } else if (!restoredRef.current) {
+      // First load — try to restore last project path from settings.
+      // Do NOT fall back to ~ (home directory) — listing ~ triggers macOS TCC
+      // permission dialogs for Desktop/Downloads/Documents on every launch.
+      restoredRef.current = true;
+      invoke<any>('get_settings')
+        .then((settings) => {
+          if (settings.last_project_path) {
+            setProjectPath(settings.last_project_path);
+          }
+          // If no last path, stay in "no project" state — user picks a folder
         })
         .catch(console.error);
     }

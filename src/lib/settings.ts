@@ -16,6 +16,7 @@ export interface AppSettings {
   terminal_font_size: number;
   mcp_servers: MCPServerConfig[];
   extension_settings: Record<string, Record<string, unknown>>;
+  last_project_path?: string | null;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -33,6 +34,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   terminal_font_size: 13,
   mcp_servers: [],
   extension_settings: {},
+  last_project_path: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {

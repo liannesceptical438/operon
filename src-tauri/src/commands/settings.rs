@@ -30,6 +30,8 @@ pub struct AppSettings {
     pub mcp_servers: Vec<MCPServerConfig>,
     #[serde(default)]
     pub extension_settings: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub last_project_path: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -50,6 +52,7 @@ impl Default for AppSettings {
             setup_completed: false,
             mcp_servers: Vec::new(),
             extension_settings: HashMap::new(),
+            last_project_path: None,
         }
     }
 }

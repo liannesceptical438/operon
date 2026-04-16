@@ -45,6 +45,7 @@ use commands::{
     enable_mcp_server,
     extract_methods_info,
     generate_protocol,
+    generate_protocol_from_files,
     generate_report_pdf,
     get_api_key,
     get_extension_config_schema,
@@ -255,6 +256,7 @@ pub fn run() {
             save_protocol,
             delete_protocol,
             generate_protocol,
+            generate_protocol_from_files,
             // Claude Code
             check_claude_installed,
             install_claude,

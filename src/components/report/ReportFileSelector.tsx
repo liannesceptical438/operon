@@ -12,6 +12,9 @@ interface ReportFileSelectorProps {
   onSelectionChange: (paths: string[]) => void;
   maxFiles?: number;
   maxSize?: number; // bytes
+  headerLabel?: string;
+  headerStats?: string;
+  tipText?: string;
 }
 
 function getFileIcon(fileType: string) {
@@ -153,7 +156,7 @@ function getAllFiles(node: ScanTreeNode): ScannedFile[] {
   return files;
 }
 
-export function ReportFileSelector({ scan, selectedFiles, onSelectionChange, maxFiles = 40, maxSize = 15 * 1024 * 1024 }: ReportFileSelectorProps) {
+export function ReportFileSelector({ scan, selectedFiles, onSelectionChange, maxFiles = 40, maxSize = 15 * 1024 * 1024, headerLabel, headerStats, tipText }: ReportFileSelectorProps) {
   const allFiles = getAllFiles(scan.root);
   const selectedSize = allFiles
     .filter(f => selectedFiles.includes(f.path))
@@ -187,9 +190,9 @@ export function ReportFileSelector({ scan, selectedFiles, onSelectionChange, max
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/60 bg-zinc-800/20">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-medium text-zinc-300">Select files for report</span>
+          <span className="text-[11px] font-medium text-zinc-300">{headerLabel || 'Select files for report'}</span>
           <span className="text-[10px] text-zinc-500">
-            {scan.total_pdfs} PDFs, {scan.total_images} images, {scan.total_csvs} CSVs, {scan.total_docs} docs
+            {headerStats || `${scan.total_pdfs} PDFs, ${scan.total_images} images, ${scan.total_csvs} CSVs, ${scan.total_docs} docs`}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -223,7 +226,7 @@ export function ReportFileSelector({ scan, selectedFiles, onSelectionChange, max
         </div>
       ) : (
         <div className="px-3 py-1 text-[9px] text-zinc-600">
-          Tip: Avoid selecting files over 1 MB — they consume significant context and may reduce report quality.
+          {tipText || 'Tip: Avoid selecting files over 1 MB — they consume significant context and may reduce report quality.'}
         </div>
       )}
 

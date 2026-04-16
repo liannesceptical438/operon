@@ -34,7 +34,8 @@ pub use extensions::{
     update_extension_settings, validate_extension_install,
 };
 pub use files::{
-    create_directory, create_file, delete_path, delete_protocol, generate_protocol, get_home_dir,
+    create_directory, create_file, delete_path, delete_protocol, generate_protocol,
+    generate_protocol_from_files, get_home_dir,
     get_protocols_dir, index_project, index_remote_project, list_directory, list_protocols,
     read_file, read_file_base64, read_protocol, rename_path, save_attachment_file,
     save_clipboard_image, save_protocol, write_file,

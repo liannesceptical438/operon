@@ -917,7 +917,16 @@ function SearchView() {
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const [sshConnection, setSSHConnection] = useState<SSHConnection | null>(null);
   const [localTerminalId, setLocalTerminalId] = useState<string | null>(null);
-  const [activeProtocolId, setActiveProtocolId] = useState<string | null>(null);
+  const [activeProtocolIds, setActiveProtocolIds] = useState<string[]>([]);
+  const [currentRemotePath, setCurrentRemotePath] = useState<string>('');
+
+  // Listen for remote path changes at Sidebar level (always mounted)
+  useEffect(() => {
+    const unlisten = listen<{ profileId: string; remotePath: string }>('remote-path-changed', (event) => {
+      setCurrentRemotePath(event.payload.remotePath);
+    });
+    return () => { unlisten.then((u) => u()); };
+  }, []);
 
   // Listen for local terminal active events
   useEffect(() => {
@@ -966,18 +975,25 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
 
   return (
     <div className="h-full bg-zinc-900 overflow-hidden">
-      {activeView === 'files' && <FileExplorerView sshConnection={sshConnection} localTerminalId={localTerminalId} />}
+      {/* FileExplorerView is always mounted but hidden when inactive.
+          This preserves directory listing, scroll position, and expanded state
+          across sidebar tab switches (prevents reset to home directory). */}
+      <div className={activeView === 'files' ? 'h-full' : 'hidden'}>
+        <FileExplorerView sshConnection={sshConnection} localTerminalId={localTerminalId} />
+      </div>
       {activeView === 'search' && <SearchView />}
       {activeView === 'git' && <GitPanel />}
       {activeView === 'extensions' && <ExtensionsView />}
       {activeView === 'ssh' && <SSHView onConnectSSH={() => {}} />}
       {activeView === 'protocols' && (
         <ProtocolsView
-          activeProtocolId={activeProtocolId}
-          onActivate={(protocol) => {
-            setActiveProtocolId(protocol?.id ?? null);
-            emit('protocol-changed', protocol ? { id: protocol.id, name: protocol.name } : null);
+          activeProtocolIds={activeProtocolIds}
+          onToggle={(protocol, allActive) => {
+            setActiveProtocolIds(allActive.map((p) => p.id));
+            emit('protocols-changed', allActive.length > 0 ? allActive : null);
           }}
+          sshConnection={sshConnection}
+          remotePath={currentRemotePath}
         />
       )}
       {activeView === 'docker' && <dockerExtension.SidebarPanel />}

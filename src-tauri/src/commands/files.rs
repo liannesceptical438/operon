@@ -1092,3 +1092,84 @@ Output ONLY the protocol markdown — no preamble, no explanation, no code fence
 
     Ok(result)
 }
+
+/// Generate a protocol from selected pipeline files.
+/// Takes an array of (filename, content) pairs and optional user context,
+/// sends them to Claude in one-shot mode to produce a PROTOCOL.md.
+#[tauri::command]
+pub async fn generate_protocol_from_files(
+    file_contents: Vec<(String, String)>,
+    context: Option<String>,
+) -> Result<String, String> {
+    // Build the file context section
+    let mut files_section = String::new();
+    for (name, content) in &file_contents {
+        // Truncate very large files to avoid exceeding context limits
+        let truncated = if content.len() > 50_000 {
+            format!("{}... [truncated, {} total chars]", &content[..50_000], content.len())
+        } else {
+            content.clone()
+        };
+        files_section.push_str(&format!(
+            "<file name=\"{}\">\n{}\n</file>\n\n",
+            name, truncated
+        ));
+    }
+
+    let context_line = context
+        .filter(|c| !c.trim().is_empty())
+        .map(|c| format!("\nThe user describes this pipeline as: {}\n", c))
+        .unwrap_or_default();
+
+    let meta_prompt = format!(
+        r#"You are analyzing an existing pipeline/workflow to generate a protocol for Operon, a bioinformatics AI coding assistant. \
+The protocol will be injected into every prompt when active, guiding Claude on how to handle tasks with this pipeline.
+{context}
+Below are the key files from the pipeline. Analyze them carefully to understand the workflow, tools, dependencies, and patterns.
+
+{files}
+Based on these files, generate a complete protocol in Markdown format. The protocol MUST include:
+
+1. A title as an H1 header (# Pipeline Name)
+2. A brief description of what this pipeline does, its purpose and scope
+3. Prerequisites: required tools, packages, modules, conda environments
+4. Input files: expected formats, naming conventions, directory structure
+5. Step-by-step workflow: each stage of the pipeline in order, with the commands or scripts involved
+6. Configuration: key parameters, config files, and how to customize them
+7. Output files: what gets produced, where, and in what format
+8. SLURM/HPC patterns: if detected, include job submission templates, resource requirements
+9. Common issues and troubleshooting tips based on patterns in the code
+10. Best practices extracted from the code (error handling, logging, checkpoints)
+
+Make the protocol actionable — when a user activates it and asks Claude to "run the pipeline" or "process new samples", \
+Claude should have enough context to execute it correctly on their system.
+
+Output ONLY the protocol markdown — no preamble, no explanation, no code fences wrapping the whole thing. Start directly with the # header."#,
+        context = context_line,
+        files = files_section,
+    );
+
+    // Use base64 encoding to safely pass the potentially large prompt through the shell
+    let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, meta_prompt.as_bytes());
+    let shell_cmd = format!(
+        "echo '{}' | base64 -d | claude -p - --max-turns 1 --output-format text",
+        encoded
+    );
+
+    let output = crate::platform::shell_exec_async(&shell_cmd)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run Claude: {}. Is Claude Code installed?", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Claude returned an error: {}", stderr.trim()));
+    }
+
+    let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if result.is_empty() {
+        return Err("Claude returned empty output".into());
+    }
+
+    Ok(result)
+}

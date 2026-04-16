@@ -1191,8 +1191,8 @@ export function ChatPanel() {
   const [showPlanHistory, setShowPlanHistory] = useState(false);
   // Plan conflict resolution: when user requests a new plan while one exists
   const [planConflict, setPlanConflict] = useState<{ pendingRequest: string } | null>(null);
-  const [activeProtocol, setActiveProtocol] = useState<{ id: string; name: string } | null>(null);
-  const [protocolContent, setProtocolContent] = useState<string | null>(null);
+  const [activeProtocols, setActiveProtocols] = useState<{ id: string; name: string }[]>([]);
+  const [protocolContents, setProtocolContents] = useState<Map<string, string>>(new Map());
   const [useTerminal, setUseTerminal] = useState(true); // Default ON for HPC use
   const [sshTerminalId, setSshTerminalId] = useState<string | null>(null);
   const [previousSessions, setPreviousSessions] = useState<SessionMetadata[]>([]);
@@ -1346,8 +1346,8 @@ export function ChatPanel() {
     setShowResumeModal(false);
     setPreviousSessions([]);
     setResumeChecked(true); // Don't re-check sessions immediately — user explicitly started fresh
-    setActiveProtocol(null);
-    setProtocolContent(null);
+    setActiveProtocols([]);
+    setProtocolContents(new Map());
     setExistingPlan(null);
     setPlanReady(false);
     seenMsgIds.current.clear();
@@ -1662,20 +1662,25 @@ export function ChatPanel() {
       });
     }).then((u) => unlisteners.push(u));
 
-    // Listen for protocol activation from sidebar
-    listen<{ id: string; name: string } | null>('protocol-changed', async (event) => {
-      const protocol = event.payload;
-      if (protocol) {
-        setActiveProtocol(protocol);
-        try {
-          const content = await invoke<string>('read_protocol', { protocolId: protocol.id });
-          setProtocolContent(content);
-        } catch {
-          setProtocolContent(null);
+    // Listen for protocol activation from sidebar (supports multiple protocols)
+    listen<{ id: string; name: string }[] | null>('protocols-changed', async (event) => {
+      const protocols = event.payload;
+      if (protocols && protocols.length > 0) {
+        setActiveProtocols(protocols);
+        // Load content for all active protocols
+        const contents = new Map<string, string>();
+        for (const p of protocols) {
+          try {
+            const content = await invoke<string>('read_protocol', { protocolId: p.id });
+            contents.set(p.id, content);
+          } catch {
+            // Skip protocols that fail to load
+          }
         }
+        setProtocolContents(contents);
       } else {
-        setActiveProtocol(null);
-        setProtocolContent(null);
+        setActiveProtocols([]);
+        setProtocolContents(new Map());
       }
     }).then((u) => unlisteners.push(u));
 
@@ -2699,10 +2704,15 @@ export function ChatPanel() {
       indexPrefix = `<project_files>\n${projectIndex.current}\n</project_files>\n\n`;
     }
 
-    // Layer 2: Active protocol (user-selected from sidebar)
+    // Layer 2: Active protocols (user-selected from sidebar, up to 2)
     let protocolPrefix = '';
-    if (activeProtocol && protocolContent) {
-      protocolPrefix = `<protocol name="${activeProtocol.name}">\n${protocolContent}\n</protocol>\n\nFollow the above protocol for this task. `;
+    if (activeProtocols.length > 0 && protocolContents.size > 0) {
+      const blocks = activeProtocols
+        .filter((p) => protocolContents.has(p.id))
+        .map((p) => `<protocol name="${p.name}">\n${protocolContents.get(p.id)}\n</protocol>`);
+      if (blocks.length > 0) {
+        protocolPrefix = blocks.join('\n\n') + '\n\nFollow the above protocol' + (blocks.length > 1 ? 's' : '') + ' for this task. ';
+      }
     }
 
     // Layer 2.5: Server configuration + HPC execution guidelines
@@ -3031,7 +3041,7 @@ You are running on an HPC cluster via an SSH connection. Follow these rules stri
   // NOTE: projectPath is intentionally excluded from deps — we use
   // sessionProjectPath (pinned on first message) so that sidebar folder
   // navigation does not break an active streaming session.
-  }, [input, isStreaming, sessionId, model, claudeSessionId, mode, remoteInfo, useTerminal, sshTerminalId, mentions, activeProtocol, protocolContent, existingPlan, pubmedEnabled, reportPhase, reportSelectedFiles, reportMethodsInfo, reportScope, reportSelectedPlan, planConflict, planReady]);
+  }, [input, isStreaming, sessionId, model, claudeSessionId, mode, remoteInfo, useTerminal, sshTerminalId, mentions, activeProtocols, protocolContents, existingPlan, pubmedEnabled, reportPhase, reportSelectedFiles, reportMethodsInfo, reportScope, reportSelectedPlan, planConflict, planReady]);
 
   // Report mode: user clicks "Generate Report" button during clarify phase.
   // Calls sendMessage with an override string, which bypasses the isStreaming
@@ -3747,20 +3757,28 @@ You are running on an HPC cluster via an SSH connection. Follow these rules stri
         </div>
       )}
 
-      {/* Active Protocol banner */}
-      {activeProtocol && (
-        <div className="flex items-center gap-1.5 px-3 py-1 border-b border-zinc-800/30 shrink-0 bg-teal-950/30">
+      {/* Active Protocols banner */}
+      {activeProtocols.length > 0 && (
+        <div className="flex items-center gap-1.5 px-3 py-1 border-b border-zinc-800/30 shrink-0 bg-teal-950/30 flex-wrap">
           <BookOpen className="w-3 h-3 text-teal-400 shrink-0" />
-          <span className="text-[10px] text-teal-400 font-medium">Protocol</span>
-          <span className="text-[10px] text-zinc-600 mx-0.5">{'\u00B7'}</span>
-          <span className="text-[10px] text-zinc-300 truncate">{activeProtocol.name}</span>
-          <button
-            onClick={() => { setActiveProtocol(null); setProtocolContent(null); }}
-            className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors ml-auto shrink-0"
-            title="Remove protocol"
-          >
-            {'\u2715'}
-          </button>
+          <span className="text-[10px] text-teal-400 font-medium">Protocol{activeProtocols.length > 1 ? 's' : ''}</span>
+          {activeProtocols.map((p, i) => (
+            <span key={p.id} className="flex items-center gap-1">
+              {i > 0 && <span className="text-[10px] text-zinc-700">+</span>}
+              <span className="text-[10px] text-zinc-300 truncate">{p.name}</span>
+              <button
+                onClick={() => {
+                  const remaining = activeProtocols.filter((ap) => ap.id !== p.id);
+                  setActiveProtocols(remaining);
+                  setProtocolContents((prev) => { const next = new Map(prev); next.delete(p.id); return next; });
+                }}
+                className="text-[9px] text-zinc-600 hover:text-zinc-400 transition-colors"
+                title={`Remove ${p.name}`}
+              >
+                {'\u2715'}
+              </button>
+            </span>
+          ))}
         </div>
       )}
 

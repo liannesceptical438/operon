@@ -37,6 +37,10 @@ import {
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
+import { useProject } from '../../context/ProjectContext';
+import { scanProjectFiles, scanRemoteProjectFiles, batchReadFilePreviews, batchReadRemoteFilePreviews } from '../../lib/report';
+import { ReportFileSelector } from '../report/ReportFileSelector';
+import type { ProjectScan, ScanTreeNode, ScannedFile } from '../../types/report';
 
 interface ProtocolEntry {
   id: string;
@@ -49,12 +53,22 @@ interface ProtocolEntry {
   category: string;  // auto-detected category for grouping
 }
 
-interface ProtocolsViewProps {
-  activeProtocolId: string | null;
-  onActivate: (protocol: { id: string; name: string } | null) => void;
+interface SSHConnection {
+  profileId: string;
+  profileName: string;
+  terminalId: string;
 }
 
-type ViewMode = 'list' | 'create' | 'edit';
+interface ProtocolsViewProps {
+  activeProtocolIds: string[];
+  onToggle: (protocol: { id: string; name: string }, allActive: { id: string; name: string }[]) => void;
+  sshConnection?: SSHConnection | null;
+  remotePath?: string;
+}
+
+const MAX_ACTIVE_PROTOCOLS = 2;
+
+type ViewMode = 'list' | 'create' | 'edit' | 'import';
 type CreateTab = 'generate' | 'manual';
 type FilterTab = 'all' | 'user' | 'bundled';
 
@@ -81,7 +95,7 @@ const CATEGORY_ORDER = [
   'finance', 'pipeline', 'tool', 'other',
 ];
 
-export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewProps) {
+export function ProtocolsView({ activeProtocolIds, onToggle, sshConnection, remotePath: remotePathProp }: ProtocolsViewProps) {
   const [protocols, setProtocols] = useState<ProtocolEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -107,6 +121,16 @@ export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewPro
   const [aiDescription, setAiDescription] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
+
+  // Import from project state
+  const { projectPath } = useProject();
+  const [importPhase, setImportPhase] = useState<'scan' | 'select' | 'context' | 'generate' | 'review'>('scan');
+  const [importScan, setImportScan] = useState<ProjectScan | null>(null);
+  const [importSelectedFiles, setImportSelectedFiles] = useState<string[]>([]);
+  const [importContext, setImportContext] = useState('');
+  const [importGenerating, setImportGenerating] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const remotePath = remotePathProp || '';
 
   // Delete confirmation
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -227,12 +251,121 @@ export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewPro
   };
 
   const handleActivate = (p: ProtocolEntry) => {
-    if (activeProtocolId === p.id) {
-      onActivate(null);
+    const isActive = activeProtocolIds.includes(p.id);
+    let newActive: { id: string; name: string }[];
+    if (isActive) {
+      // Deactivate this protocol
+      newActive = protocols
+        .filter((proto) => activeProtocolIds.includes(proto.id) && proto.id !== p.id)
+        .map((proto) => ({ id: proto.id, name: proto.name }));
     } else {
-      onActivate({ id: p.id, name: p.name });
-      emit('protocol-activated', { id: p.id, name: p.name });
+      if (activeProtocolIds.length >= MAX_ACTIVE_PROTOCOLS) return; // Enforce limit
+      // Activate this protocol alongside existing ones
+      const existing = protocols
+        .filter((proto) => activeProtocolIds.includes(proto.id))
+        .map((proto) => ({ id: proto.id, name: proto.name }));
+      newActive = [...existing, { id: p.id, name: p.name }];
     }
+    onToggle({ id: p.id, name: p.name }, newActive);
+  };
+
+  // Auto-select pipeline-relevant files from a scan tree
+  const PIPELINE_EXTENSIONS = new Set([
+    'py', 'r', 'R', 'sh', 'bash', 'pl', 'slurm', 'sbatch', 'pbs',
+    'smk', 'nf', 'wdl', 'cwl',
+    'yaml', 'yml', 'json', 'toml', 'cfg', 'ini', 'env', 'config',
+    'md', 'txt', 'rst',
+    'def', 'dockerfile',
+  ]);
+  const PIPELINE_FILENAMES = new Set([
+    'snakefile', 'makefile', 'dockerfile', 'nextflow.config',
+    'readme', 'readme.md', 'readme.txt', 'methods', 'methods.md',
+  ]);
+  const DATA_EXTENSIONS = new Set([
+    'fastq', 'fq', 'bam', 'sam', 'cram', 'h5', 'hdf5', 'h5ad',
+    'csv', 'tsv', 'bed', 'vcf', 'bcf', 'bigwig', 'bw', 'gz', 'zip',
+    'tar', 'png', 'jpg', 'jpeg', 'gif', 'pdf', 'svg', 'tif', 'tiff',
+  ]);
+
+  const getAllScanFiles = (node: ScanTreeNode): ScannedFile[] => {
+    const files = [...node.files];
+    for (const child of node.children) files.push(...getAllScanFiles(child));
+    return files;
+  };
+
+  const autoSelectPipelineFiles = (scan: ProjectScan): string[] => {
+    const allFiles = getAllScanFiles(scan.root);
+    return allFiles
+      .filter((f) => {
+        const ext = f.name.split('.').pop()?.toLowerCase() || '';
+        const nameLower = f.name.toLowerCase();
+        if (DATA_EXTENSIONS.has(ext)) return false;
+        if (f.size > 1024 * 1024) return false; // Skip files > 1MB
+        return PIPELINE_EXTENSIONS.has(ext) || PIPELINE_FILENAMES.has(nameLower);
+      })
+      .map((f) => f.path);
+  };
+
+  const isRemote = !!sshConnection;
+
+  const handleImport = async () => {
+    const scanPath = isRemote ? remotePath : projectPath;
+    if (!scanPath) {
+      setImportError(isRemote ? 'No remote path set. Navigate to a folder on the server first.' : 'No project folder open. Open a folder first.');
+      setViewMode('import');
+      setImportPhase('select');
+      return;
+    }
+    setViewMode('import');
+    setImportPhase('scan');
+    setImportError(null);
+    setImportContext('');
+    setProtocolName('');
+    setProtocolContent('');
+
+    try {
+      const scan = isRemote
+        ? await scanRemoteProjectFiles(sshConnection!.profileId, scanPath)
+        : await scanProjectFiles(scanPath);
+      setImportScan(scan);
+      setImportSelectedFiles(autoSelectPipelineFiles(scan));
+      setImportPhase('select');
+    } catch (err) {
+      setImportError(`Scan failed: ${err}`);
+    }
+  };
+
+  const handleImportGenerate = async () => {
+    if (importSelectedFiles.length === 0) return;
+    setImportPhase('generate');
+    setImportGenerating(true);
+    setImportError(null);
+
+    try {
+      // Read file contents (local or remote)
+      const previews = isRemote
+        ? await batchReadRemoteFilePreviews(sshConnection!.profileId, importSelectedFiles)
+        : await batchReadFilePreviews(importSelectedFiles);
+      const fileContents: [string, string][] = previews
+        .filter((p) => !p.error && p.content)
+        .map((p) => [p.name, p.content]);
+
+      // Generate protocol via Claude
+      const result = await invoke<string>('generate_protocol_from_files', {
+        fileContents,
+        context: importContext || null,
+      });
+
+      // Extract name from first H1 header
+      const nameMatch = result.match(/^#\s+(.+)/m);
+      setProtocolName(nameMatch ? nameMatch[1].trim() : 'Imported Pipeline');
+      setProtocolContent(result);
+      setImportPhase('review');
+    } catch (err) {
+      setImportError(`Generation failed: ${err}`);
+      setImportPhase('select');
+    }
+    setImportGenerating(false);
   };
 
   const openProtocolsFolder = async () => {
@@ -322,8 +455,12 @@ export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewPro
 
   const handleDelete = async (protocolId: string) => {
     try {
-      if (activeProtocolId === protocolId) {
-        onActivate(null);
+      if (activeProtocolIds.includes(protocolId)) {
+        // Deactivate the deleted protocol
+        const remaining = protocols
+          .filter((p) => activeProtocolIds.includes(p.id) && p.id !== protocolId)
+          .map((p) => ({ id: p.id, name: p.name }));
+        onToggle({ id: protocolId, name: '' }, remaining);
       }
       await invoke('delete_protocol', { protocolId });
       setDeletingId(null);
@@ -340,6 +477,163 @@ export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewPro
   };
 
   // --- Render ---
+
+  // Import from Project view
+  if (viewMode === 'import') {
+    return (
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800">
+          <button
+            onClick={() => setViewMode('list')}
+            className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-[11px] font-semibold text-zinc-300">Import Pipeline as Protocol</span>
+          {isRemote && (
+            <span className="text-[9px] bg-teal-900/40 text-teal-400 px-1.5 py-0.5 rounded-full ml-auto">
+              {sshConnection?.profileName}
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {importPhase === 'scan' && (
+            <div className="flex flex-col items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 text-teal-400 animate-spin mb-2" />
+              <p className="text-xs text-zinc-400">Scanning project files...</p>
+            </div>
+          )}
+
+          {importPhase === 'select' && importScan && (
+            <>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Select the scripts, configs, and workflow files that define your pipeline.
+                Data files (FASTQ, BAM, H5, etc.) are dimmed — they are not needed for the protocol.
+              </p>
+              <ReportFileSelector
+                scan={importScan}
+                selectedFiles={importSelectedFiles}
+                onSelectionChange={setImportSelectedFiles}
+                maxFiles={50}
+                maxSize={20 * 1024 * 1024}
+                headerLabel="Select pipeline files"
+                headerStats={`${importSelectedFiles.length} selected · ${importScan.total_code} code files in project`}
+                tipText="Scripts, configs, and docs are auto-selected. Deselect any that aren't relevant."
+              />
+              {importError && (
+                <p className="text-[10px] text-red-400">{importError}</p>
+              )}
+              <button
+                onClick={() => setImportPhase('context')}
+                disabled={importSelectedFiles.length === 0}
+                className="w-full py-2 bg-teal-600 hover:bg-teal-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-xs font-medium rounded transition-colors"
+              >
+                Continue ({importSelectedFiles.length} files selected)
+              </button>
+            </>
+          )}
+
+          {importPhase === 'context' && (
+            <>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Optionally describe what this pipeline does. This helps Claude generate a better protocol.
+              </p>
+              <textarea
+                value={importContext}
+                onChange={(e) => setImportContext(e.target.value)}
+                placeholder="e.g., Bulk RNA-seq pipeline from FASTQ to differential expression, using STAR + DESeq2 on a SLURM cluster..."
+                className="w-full h-24 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-200 placeholder:text-zinc-600 resize-none focus:outline-none focus:border-teal-600"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setImportPhase('select')}
+                  className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleImportGenerate}
+                  className="flex-1 py-2 bg-teal-600 hover:bg-teal-500 text-white text-xs font-medium rounded transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Generate Protocol
+                </button>
+              </div>
+            </>
+          )}
+
+          {importPhase === 'generate' && (
+            <div className="flex flex-col items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 text-teal-400 animate-spin mb-2" />
+              <p className="text-xs text-zinc-400">Claude is analyzing your pipeline...</p>
+              <p className="text-[10px] text-zinc-600 mt-1">This may take 30–60 seconds</p>
+            </div>
+          )}
+
+          {importPhase === 'review' && (
+            <>
+              <p className="text-[11px] text-green-400 font-medium">Protocol generated! Review and save:</p>
+              {importError && (
+                <p className="text-[10px] text-red-400">{importError}</p>
+              )}
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-1">Protocol name</label>
+                <input
+                  type="text"
+                  value={protocolName}
+                  onChange={(e) => setProtocolName(e.target.value)}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-teal-600"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 block mb-1">Protocol content</label>
+                <textarea
+                  value={protocolContent}
+                  onChange={(e) => setProtocolContent(e.target.value)}
+                  className="w-full h-64 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-xs text-zinc-200 font-mono resize-none focus:outline-none focus:border-teal-600"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleImportGenerate}
+                  disabled={importGenerating}
+                  className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded transition-colors"
+                >
+                  Regenerate
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!protocolName.trim() || !protocolContent.trim()) return;
+                    setSaving(true);
+                    setSaveError(null);
+                    try {
+                      const id = protocolName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                      await invoke('save_protocol', { protocolId: id, content: protocolContent });
+                      await loadProtocols();
+                      setViewMode('list');
+                    } catch (e) {
+                      setSaveError(String(e));
+                    }
+                    setSaving(false);
+                  }}
+                  disabled={saving || !protocolName.trim() || !protocolContent.trim()}
+                  className="flex-1 py-2 bg-teal-600 hover:bg-teal-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-xs font-medium rounded transition-colors flex items-center justify-center gap-1.5"
+                >
+                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                  Save Protocol
+                </button>
+              </div>
+              {saveError && (
+                <p className="text-[10px] text-red-400">{saveError}</p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Create / Edit view
   if (viewMode === 'create' || viewMode === 'edit') {
@@ -521,6 +815,13 @@ export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewPro
         </div>
         <div className="flex items-center gap-1">
           <button
+            onClick={handleImport}
+            className="p-1 rounded hover:bg-zinc-800 text-teal-400 hover:text-teal-300 transition-colors"
+            title="Import pipeline as protocol"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+          </button>
+          <button
             onClick={handleNew}
             className="p-1 rounded hover:bg-zinc-800 text-teal-400 hover:text-teal-300 transition-colors"
             title="New protocol"
@@ -591,6 +892,18 @@ export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewPro
         </div>
       </div>
 
+      {/* Limit warning */}
+      {activeProtocolIds.length >= MAX_ACTIVE_PROTOCOLS && (
+        <div className="px-3 py-1.5 bg-amber-950/30 border-b border-amber-800/30">
+          <p className="text-[10px] text-amber-400">
+            Maximum {MAX_ACTIVE_PROTOCOLS} protocols active. Deactivate one to select another.
+          </p>
+          <p className="text-[9px] text-zinc-500 mt-0.5">
+            Using too many protocols at once consumes context and may reduce response quality.
+          </p>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
@@ -660,7 +973,8 @@ export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewPro
 
                     {/* Protocol items */}
                     {!isCollapsed && items.map(p => {
-                      const isActive = activeProtocolId === p.id;
+                      const isActive = activeProtocolIds.includes(p.id);
+                      const atLimit = activeProtocolIds.length >= MAX_ACTIVE_PROTOCOLS && !isActive;
                       const isExpanded = expandedId === p.id;
                       const isDeleting = deletingId === p.id;
 
@@ -697,10 +1011,13 @@ export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewPro
                                 {/* Activate button */}
                                 <button
                                   onClick={() => handleActivate(p)}
+                                  disabled={atLimit}
                                   className={`mt-0.5 w-4.5 h-4.5 rounded flex items-center justify-center shrink-0 transition-colors ${
                                     isActive
                                       ? 'bg-teal-600 text-white'
-                                      : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300'
+                                      : atLimit
+                                        ? 'bg-zinc-800/50 text-zinc-700 cursor-not-allowed'
+                                        : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300'
                                   }`}
                                   style={{ width: '18px', height: '18px' }}
                                   title={isActive ? 'Deactivate protocol' : 'Activate protocol'}
@@ -848,8 +1165,7 @@ export function ProtocolsView({ activeProtocolId, onActivate }: ProtocolsViewPro
       {/* Footer info */}
       <div className="px-3 py-2 border-t border-zinc-800">
         <p className="text-[9px] text-zinc-600 leading-relaxed">
-          Custom protocols are saved to <code className="bg-zinc-800 px-1 rounded">~/.operon/protocols/</code>.
-          You can also place <code className="bg-zinc-800 px-1 rounded">.md</code> files there directly.
+          Create protocols with AI or import from an existing pipeline.
         </p>
       </div>
     </div>

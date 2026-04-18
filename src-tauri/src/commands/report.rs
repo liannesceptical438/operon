@@ -548,7 +548,7 @@ pub async fn extract_methods_info(path: String) -> Result<MethodsInfo, String> {
     }
 
     // Sort tools alphabetically
-    tools.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    tools.sort_by_key(|t| t.name.to_lowercase());
 
     Ok(MethodsInfo {
         tools,

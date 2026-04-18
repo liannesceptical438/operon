@@ -837,7 +837,7 @@ pub async fn list_protocols(app_handle: tauri::AppHandle) -> Result<Vec<Protocol
         }
     }
 
-    protocols.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    protocols.sort_by_key(|p| p.name.to_lowercase());
     Ok(protocols)
 }
 
